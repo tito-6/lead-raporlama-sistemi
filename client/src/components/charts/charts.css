@@ -1,0 +1,69 @@
+/* Custom styles for 3D Chart components */
+
+.three-d-pie-container {
+  position: relative;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  padding: 20px;
+  margin: 10px 0;
+}
+
+.three-d-pie-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.2) 100%);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.chart-title-3d {
+  background: linear-gradient(135deg, #1e293b 0%, #475569 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Custom tooltip styles */
+.chartjs-tooltip {
+  background: rgba(0, 0, 0, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 8px !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+/* Animation keyframes for 3D effect */
+@keyframes pieSliceRise {
+  0% {
+    transform: scale(0) rotateY(0deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1) rotateY(10deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1) rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+.pie-slice-animated {
+  animation: pieSliceRise 600ms ease-out-back;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+  .three-d-pie-container {
+    padding: 1rem;
+  }
+  
+  .chart-title-3d {
+    font-size: 1rem;
+  }
+}

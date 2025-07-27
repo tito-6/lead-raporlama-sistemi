@@ -1,0 +1,89 @@
+[
+  {
+    "month": "2025-05",
+    "expenseType": "agency_fee",
+    "amountTL": "240000",
+    "description": "",
+    "id": 1,
+    "createdAt": "2025-07-26T15:13:31.014Z",
+    "updatedAt": "2025-07-26T15:13:31.014Z"
+  },
+  {
+    "month": "2025-06",
+    "expenseType": "agency_fee",
+    "amountTL": "240000",
+    "description": "",
+    "id": 2,
+    "createdAt": "2025-07-26T15:13:37.585Z",
+    "updatedAt": "2025-07-26T15:13:47.450Z"
+  },
+  {
+    "month": "2025-07",
+    "expenseType": "agency_fee",
+    "amountTL": "240000",
+    "description": "",
+    "id": 3,
+    "createdAt": "2025-07-26T15:13:55.463Z",
+    "updatedAt": "2025-07-26T15:13:55.463Z"
+  },
+  {
+    "month": "2025-05",
+    "expenseType": "ads_expense",
+    "amountTL": "380396",
+    "description": "",
+    "id": 4,
+    "createdAt": "2025-07-26T18:12:24.933Z",
+    "updatedAt": "2025-07-26T18:12:51.513Z",
+    "projectName": "Model Sanayi Merkezi"
+  },
+  {
+    "month": "2025-05",
+    "expenseType": "ads_expense",
+    "amountTL": "136176",
+    "description": "",
+    "projectName": "Model Kuyum Merkezi",
+    "id": 5,
+    "createdAt": "2025-07-26T18:13:12.739Z",
+    "updatedAt": "2025-07-26T18:13:16.668Z"
+  },
+  {
+    "month": "2025-06",
+    "expenseType": "ads_expense",
+    "amountTL": "271865",
+    "description": "",
+    "projectName": "Model Sanayi Merkezi",
+    "id": 6,
+    "createdAt": "2025-07-26T18:13:33.535Z",
+    "updatedAt": "2025-07-26T18:13:33.535Z"
+  },
+  {
+    "month": "2025-06",
+    "expenseType": "ads_expense",
+    "amountTL": "52923",
+    "description": "",
+    "projectName": "Model Kuyum Merkezi",
+    "id": 7,
+    "createdAt": "2025-07-26T18:13:51.017Z",
+    "updatedAt": "2025-07-26T18:13:51.017Z"
+  },
+  {
+    "month": "2025-07",
+    "expenseType": "ads_expense",
+    "amountTL": "211942",
+    "description": "",
+    "projectName": "Model Sanayi Merkezi",
+    "id": 8,
+    "createdAt": "2025-07-26T18:14:07.287Z",
+    "updatedAt": "2025-07-26T18:14:07.287Z"
+  },
+  {
+    "month": "2025-07",
+    "expenseType": "ads_expense",
+    "amountTL": "71779",
+    "description": "",
+    "projectName": "Model Kuyum Merkezi",
+    "id": 9,
+    "createdAt": "2025-07-26T18:14:16.995Z",
+    "updatedAt": "2025-07-26T18:14:16.995Z"
+  }
+]

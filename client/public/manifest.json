@@ -1,0 +1,21 @@
+{
+  "name": "İNNO Gayrimenkul Lead Raporlama Sistemi",
+  "short_name": "İNNO Lead System",
+  "description": "İNNO Gayrimenkul Yatırım A.Ş. için AI-destekli emlak lead yönetim ve raporlama sistemi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "/innogylogo.webp",
+      "sizes": "192x192",
+      "type": "image/webp"
+    },
+    {
+      "src": "/innogylogo.webp",
+      "sizes": "512x512",
+      "type": "image/webp"
+    }
+  ]
+}
