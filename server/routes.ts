@@ -426,35 +426,12 @@ function mapRowToLead(row: any): any {
   };
 }
 
-import { sampleLeads } from "./sample-data";
-
 export async function registerRoutes(
   app: Express,
   customStorage?: IStorage
 ): Promise<Server> {
   // Use provided storage or fall back to default storage
   const storage = customStorage || defaultStorage;
-  // Load sample data for testing
-  app.get("/api/load-sample-data", async (req, res) => {
-    try {
-      // Clear existing leads
-      await storage.clearAllLeads();
-
-      // Add sample leads
-      for (const lead of sampleLeads) {
-        await storage.createLead(lead);
-      }
-
-      res.json({
-        success: true,
-        message: "Sample data loaded successfully",
-        count: sampleLeads.length,
-      });
-    } catch (error) {
-      console.error("Failed to load sample data:", error);
-      res.status(500).json({ message: "Failed to load sample data" });
-    }
-  });
 
   // Leads endpoints
   app.get("/api/leads", async (req, res) => {
@@ -1066,13 +1043,6 @@ export async function registerRoutes(
         }
       });
 
-      // Debug: log first few items to see the structure
-      console.log(
-        "Sample data structure:",
-        JSON.stringify(jsonData.slice(0, 1), null, 2)
-      );
-      console.log("Available columns:", Object.keys(jsonData[0] || {}));
-
       // Store in memory (in production, this would go to database)
       // More flexible filtering - accept any row that has at least one meaningful column
       takipteStorage = jsonData.filter((item) => {
@@ -1101,7 +1071,6 @@ export async function registerRoutes(
       res.json({
         message: "Takipte file imported successfully",
         imported: takipteStorage.length,
-        sampleData: takipteStorage.slice(0, 3), // Return sample for verification
       });
     } catch (error) {
       console.error("Error importing takipte file:", error);
@@ -1508,12 +1477,6 @@ export async function registerRoutes(
             return acc;
           }, {} as Record<string, number>),
           byPersonnel: filteredTakipte.reduce((acc, item) => {
-            // Debug: Log available fields in the first record
-            if (Object.keys(acc).length === 0) {
-              console.log("Available takipte fields:", Object.keys(item));
-              console.log("Sample item:", JSON.stringify(item, null, 2));
-            }
-
             // Try multiple possible field names for personnel
             const personnel =
               item["Personel Adı(11,908)"] ||
@@ -2925,6 +2888,164 @@ export async function registerRoutes(
         error: "Failed to calculate salesperson performance",
         message: error instanceof Error ? error.message : "Unknown error",
       });
+    }
+  });
+
+  // Sales Targets endpoints
+  app.get("/api/sales-targets", async (req, res) => {
+    try {
+      const { loadSalesTargets } = await import("./sales-targets-manager");
+      const targets = loadSalesTargets();
+      res.json(targets);
+    } catch (error) {
+      console.error("Error fetching sales targets:", error);
+      res.status(500).json({ error: "Failed to fetch sales targets" });
+    }
+  });
+
+  app.post("/api/sales-targets", async (req, res) => {
+    try {
+      const { saveSalesTargets, loadSalesTargets } = await import("./sales-targets-manager");
+      saveSalesTargets(req.body);
+      const updatedTargets = loadSalesTargets();
+      res.json(updatedTargets);
+    } catch (error) {
+      console.error("Error updating sales targets:", error);
+      res.status(400).json({ error: "Failed to update sales targets" });
+    }
+  });
+
+  app.put("/api/sales-targets/personnel/:name", async (req, res) => {
+    try {
+      const { name } = req.params;
+      const { monthlyTarget, projectName = 'Model Sanayi Merkezi' } = req.body;
+      
+      const { setPersonnelTarget, loadSalesTargets, saveSalesTargets } = await import("./sales-targets-manager");
+      
+      let targets = loadSalesTargets();
+      
+      targets = setPersonnelTarget(name, projectName, {
+        target: monthlyTarget,
+        period: 'monthly',
+        description: `Custom target for ${name} on ${projectName}`
+      }, targets);
+      
+      targets.salesTargets.lastUpdated = new Date().toISOString();
+      saveSalesTargets(targets);
+      
+      const updatedTargets = loadSalesTargets();
+      res.json(updatedTargets);
+    } catch (error) {
+      console.error("Error updating personnel target:", error);
+      res.status(400).json({ error: "Failed to update personnel target" });
+    }
+  });
+
+  app.delete("/api/sales-targets/personnel/:name", async (req, res) => {
+    try {
+      const { name } = req.params;
+      
+      const { loadSalesTargets, saveSalesTargets } = await import("./sales-targets-manager");
+      const targets = loadSalesTargets();
+      
+      // Remove personnel override
+      delete targets.salesTargets.personnel[name];
+      targets.salesTargets.lastUpdated = new Date().toISOString();
+      
+      saveSalesTargets(targets);
+      const updatedTargets = loadSalesTargets();
+      res.json(updatedTargets);
+    } catch (error) {
+      console.error("Error removing personnel target:", error);
+      res.status(400).json({ error: "Failed to remove personnel target" });
+    }
+  });
+
+  app.get("/api/sales-targets/analytics", async (req, res) => {
+    try {
+      const { startDate, endDate, month, year } = req.query;
+      
+      const { loadSalesTargets, getPersonnelTarget, calculateEffectiveTarget } = await import("./sales-targets-manager");
+      
+      // Get sales targets
+      const targets = loadSalesTargets();
+      
+      // Get all leads for performance calculation
+      const allLeads = await storage.getLeads();
+      
+      // Filter by date if provided
+      let filteredLeads = allLeads;
+      if (startDate || endDate || month || year) {
+        filteredLeads = allLeads.filter((lead) => {
+          const leadDate = new Date(lead.requestDate || lead.createdAt || "");
+          
+          // Month filter
+          if (month && year) {
+            const leadMonth = (leadDate.getMonth() + 1).toString().padStart(2, "0");
+            const leadYear = leadDate.getFullYear().toString();
+            return leadMonth === month && leadYear === year;
+          }
+          
+          // Date range filter
+          if (startDate && leadDate < new Date(startDate as string)) return false;
+          if (endDate && leadDate > new Date(endDate as string)) return false;
+          
+          return true;
+        });
+      }
+      
+      // Get unique sales personnel
+      const salesPersonnel = Array.from(new Set(allLeads.map(lead => lead.assignedPersonnel).filter(Boolean)));
+      
+      // Calculate analytics for each person
+      const personnelAnalytics = salesPersonnel.map(personnel => {
+        const personnelLeads = filteredLeads.filter(lead => lead.assignedPersonnel === personnel);
+        const salesLeads = personnelLeads.filter(lead => 
+          lead.status?.toLowerCase().includes('satış') ||
+          lead.status?.toLowerCase().includes('satis') ||
+          lead.wasSaleMade?.toLowerCase() === 'evet'
+        );
+        
+        // Get target for this personnel (using default project for now)
+        const target = getPersonnelTarget(personnel, 'Model Sanayi Merkezi', targets);
+        const targetNumber = calculateEffectiveTarget(target, {
+          startDate: startDate as string,
+          endDate: endDate as string
+        });
+        
+        return {
+          personnel,
+          totalLeads: personnelLeads.length,
+          salesCount: salesLeads.length,
+          target: targetNumber,
+          achievement: targetNumber > 0 ? (salesLeads.length / targetNumber) * 100 : 0,
+          status: salesLeads.length >= targetNumber ? 'Met' : 'Below Target'
+        };
+      });
+      
+      // Calculate overall stats
+      const totalSales = filteredLeads.filter(lead => 
+        lead.status?.toLowerCase().includes('satış') ||
+        lead.status?.toLowerCase().includes('satis') ||
+        lead.wasSaleMade?.toLowerCase() === 'evet'
+      ).length;
+      
+      const totalTargets = personnelAnalytics.reduce((sum, p) => sum + p.target, 0);
+      
+      const analytics = {
+        period: { startDate, endDate, month, year },
+        totalLeads: filteredLeads.length,
+        totalSales,
+        totalTargets,
+        overallAchievement: totalTargets > 0 ? (totalSales / totalTargets) * 100 : 0,
+        personnelAnalytics,
+        targets: targets.salesTargets
+      };
+      
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error calculating target analytics:", error);
+      res.status(500).json({ error: "Failed to calculate target analytics" });
     }
   });
 

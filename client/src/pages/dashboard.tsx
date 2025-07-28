@@ -21,19 +21,18 @@ import {
 import DataEntryTab from "@/components/data-entry-tab";
 import ReportsTab from "@/components/reports-tab";
 import ExportTab from "@/components/export-tab";
-import SettingsTab from "@/components/settings-tab";
 import OlumsuzAnaliziTab from "@/components/olumsuz-analizi-tab-clean";
 import FollowUpAnalyticsTab from "@/components/follow-up-analytics-tab";
 import RefactoredTakipAnaliziTab from "@/components/refactored-takip-analizi-tab";
-import IntelligentSettingsTab from "@/components/intelligent-settings-tab";
+import SimplifiedSettingsTab from "@/components/simplified-settings-tab";
 import ExcelInputTab from "@/components/excel-input-tab";
 import DuplicateDetectionTab from "@/components/duplicate-detection-tab";
 import OverviewDashboardTab from "@/components/overview-dashboard-tab";
-import LeadGiderDetaylariTab from "@/components/lead-gider-detaylari-tab";
 import EnhancedOverviewDashboardTab from "@/components/enhanced-overview-dashboard-tab";
 import SalespersonPerformanceTab from "@/components/salesperson-performance-tab";
 import UnifiedExpenseManagementTab from "@/components/unified-expense-management-tab";
 import SalespersonPage from "@/components/salesperson-page";
+import FilterSidebar from "@/components/filter-sidebar";
 import { useQuery } from "@tanstack/react-query";
 import { SalesRep } from "@shared/schema";
 import UnifiedDataInputTab from "@/components/unified-data-input-tab";
@@ -46,7 +45,10 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 relative">
+      {/* Floating Filter Sidebar */}
+      <FilterSidebar />
+      
       {/* Header */}
       <header className="bg-gradient-to-r from-white to-blue-50 shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -103,20 +105,13 @@ export default function Dashboard() {
             {/* Main Navigation Tabs - Organized in two rows */}
             <div className="space-y-2">
               {/* Row 1: Core Functions */}
-              <TabsList className="grid w-full grid-cols-6 h-auto p-1">
+              <TabsList className="grid w-full grid-cols-5 h-auto p-1">
                 <TabsTrigger
                   value="overview"
                   className="flex items-center space-x-2 p-3"
                 >
                   <Home className="h-4 w-4" />
                   <span>Proje Bazlı Analiz</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="lead-gider-detaylari"
-                  className="flex items-center space-x-2 p-3"
-                >
-                  <Target className="h-4 w-4" />
-                  <span>Lead Gider Detayları</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="unified-data-input"
@@ -140,11 +135,11 @@ export default function Dashboard() {
                   <span>Dışa Aktar</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  value="intelligent-settings"
+                  value="settings"
                   className="flex items-center space-x-2 p-3"
                 >
                   <Settings className="h-4 w-4" />
-                  <span>🎛️ Akıllı Ayarlar</span>
+                  <span>⚙️ Satış Hedefleri</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -179,11 +174,11 @@ export default function Dashboard() {
                   <span>Duplicate Analizi</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  value="settings"
+                  value="export"
                   className="flex items-center space-x-2 p-3"
                 >
-                  <Settings className="h-4 w-4" />
-                  <span>Genel Ayarlar</span>
+                  <Download className="h-4 w-4" />
+                  <span>Dışa Aktar</span>
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -220,10 +215,6 @@ export default function Dashboard() {
             <EnhancedOverviewDashboardTab />
           </TabsContent>
 
-          <TabsContent value="lead-gider-detaylari">
-            <LeadGiderDetaylariTab />
-          </TabsContent>
-
           <TabsContent value="unified-data-input">
             <UnifiedDataInputTab />
           </TabsContent>
@@ -252,12 +243,8 @@ export default function Dashboard() {
             <ExportTab />
           </TabsContent>
 
-          <TabsContent value="intelligent-settings">
-            <IntelligentSettingsTab />
-          </TabsContent>
-
           <TabsContent value="settings">
-            <SettingsTab />
+            <SimplifiedSettingsTab />
           </TabsContent>
 
           {/* Dynamic Salesperson Tabs */}

@@ -23,6 +23,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import StandardChart from "@/components/charts/StandardChart";
+import { useFilters } from "@/contexts/filter-context";
 
 // Status definitions with colors matching the screenshot
 const statusConfig = {
@@ -72,24 +73,14 @@ interface SalesPersonStats {
 }
 
 export default function OverviewDashboardTab() {
-  const [dateFilters, setDateFilters] = useState({
-    startDate: "",
-    endDate: "",
-    month: "",
-    year: "",
-  });
-
   const [selectedPersonnel, setSelectedPersonnel] = useState<string>("");
-  const [chartType, setChartType] = useState<"pie" | "bar" | "line">("pie");
+  const { filters } = useFilters();
+  const chartType = filters.chartType;
 
   const { data: leads = [] } = useQuery<Lead[]>({
-    queryKey: ["/api/leads", dateFilters],
+    queryKey: ["/api/leads"],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      Object.entries(dateFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const response = await fetch(`/api/leads?${params.toString()}`);
+      const response = await fetch(`/api/leads`);
       return response.json();
     },
   });
@@ -99,13 +90,9 @@ export default function OverviewDashboardTab() {
   });
 
   const { data: stats } = useQuery({
-    queryKey: ["/api/stats", dateFilters],
+    queryKey: ["/api/stats"],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      Object.entries(dateFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const response = await fetch(`/api/stats?${params.toString()}`);
+      const response = await fetch(`/api/stats`);
       return response.json();
     },
   });
@@ -334,103 +321,9 @@ export default function OverviewDashboardTab() {
     return colorPalette[index % colorPalette.length];
   }
 
-  const clearFilters = () => {
-    setDateFilters({
-      startDate: "",
-      endDate: "",
-      month: "",
-      year: "",
-    });
-  };
-
-  const setMonthFilter = (month: string, year: string) => {
-    setDateFilters((prev) => ({
-      ...prev,
-      month,
-      year,
-      startDate: "",
-      endDate: "",
-    }));
-  };
-
-  const setDateRangeFilter = (startDate: string, endDate: string) => {
-    setDateFilters((prev) => ({
-      ...prev,
-      startDate,
-      endDate,
-      month: "",
-      year: "",
-    }));
-  };
-
   return (
     <div className="space-y-6">
-      {/* Date Filtering Controls */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Tarih Filtreleme (Talep Geliş Tarihi)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-            <div className="space-y-2">
-              <Label>Başlangıç Tarihi</Label>
-              <Input
-                type="date"
-                value={dateFilters.startDate}
-                onChange={(e) =>
-                  setDateRangeFilter(e.target.value, dateFilters.endDate)
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Bitiş Tarihi</Label>
-              <Input
-                type="date"
-                value={dateFilters.endDate}
-                onChange={(e) =>
-                  setDateRangeFilter(dateFilters.startDate, e.target.value)
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Ay Seçimi</Label>
-              <Select
-                value={dateFilters.month}
-                onValueChange={(month) =>
-                  setMonthFilter(month, dateFilters.year || "2025")
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Ay seçin" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Ocak</SelectItem>
-                  <SelectItem value="2">Şubat</SelectItem>
-                  <SelectItem value="3">Mart</SelectItem>
-                  <SelectItem value="4">Nisan</SelectItem>
-                  <SelectItem value="5">Mayıs</SelectItem>
-                  <SelectItem value="6">Haziran</SelectItem>
-                  <SelectItem value="7">Temmuz</SelectItem>
-                  <SelectItem value="8">Ağustos</SelectItem>
-                  <SelectItem value="9">Eylül</SelectItem>
-                  <SelectItem value="10">Ekim</SelectItem>
-                  <SelectItem value="11">Kasım</SelectItem>
-                  <SelectItem value="12">Aralık</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={clearFilters} variant="outline" size="sm">
-                <Filter className="h-4 w-4 mr-2" />
-                Temizle
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Main content starts here */}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

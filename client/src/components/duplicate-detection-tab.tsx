@@ -8,7 +8,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import DateFilter from "@/components/ui/date-filter";
 import {
   Collapsible,
   CollapsibleContent,
@@ -36,7 +35,6 @@ interface DuplicateGroup {
 }
 
 export default function DuplicateDetectionTab() {
-  // Import DateFilter component at the top of the file
   const [dateFilters, setDateFilters] = useState({
     startDate: "",
     endDate: "",
@@ -298,7 +296,6 @@ export default function DuplicateDetectionTab() {
       <Card className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <DateFilter onFilterChange={setDateFilters} />
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
               🔍 Duplicate Analizi
             </h2>

@@ -72,7 +72,6 @@ import { DataTable } from "@/components/ui/data-table";
 import { MasterDataTable } from "@/components/ui/master-data-table";
 import { useSettings } from "@/hooks/use-settings";
 import ThreeDPie from "@/components/charts/ThreeDPie";
-import DateFilter from "@/components/ui/date-filter";
 import LeadDataExplorer from "@/components/lead-data-explorer";
 import { useColors } from "@/hooks/use-colors";
 import { getSourceColor, getPersonnelColor } from "@/lib/color-system";
@@ -81,6 +80,7 @@ import {
   filterLeadsByProject,
   detectProjectFromWebFormNotu,
 } from "@/lib/project-detector";
+import { useFilters } from "@/contexts/filter-context";
 
 // Add type for enhancedStats
 interface EnhancedStats {
@@ -122,9 +122,7 @@ interface ExpenseStats {
 
 // Define filter sidebar prop types
 type FilterSidebarProps = {
-  // Chart controls
-  chartType: "pie" | "bar" | "line";
-  setChartType: React.Dispatch<React.SetStateAction<"pie" | "bar" | "line">>;
+  // Chart controls are now managed globally via FilterContext
   chartTypeOptions: Array<{ value: string; label: string; icon: string }>;
   // Project filter
   selectedProject: string;
@@ -164,9 +162,7 @@ type FilterSidebarProps = {
 };
 
 const FilterSidebar = ({
-  // Chart controls
-  chartType,
-  setChartType,
+  // Chart controls are now managed globally
   chartTypeOptions,
   // Project filter
   selectedProject,
@@ -204,6 +200,8 @@ const FilterSidebar = ({
   isCollapsed,
   setIsCollapsed,
 }: FilterSidebarProps) => {
+  const { filters: globalFilters, setFilters: setGlobalFilters } = useFilters();
+  
   type SectionKey =
     | "chartType"
     | "project"
@@ -291,10 +289,10 @@ const FilterSidebar = ({
                   <button
                     key={option.value}
                     onClick={() =>
-                      setChartType(option.value as "pie" | "bar" | "line")
+                      setGlobalFilters({ chartType: option.value as "pie" | "bar" | "line" })
                     }
                     className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      chartType === option.value
+                      globalFilters.chartType === option.value
                         ? "bg-blue-500 text-white shadow-lg"
                         : "bg-white text-gray-700 hover:bg-blue-50 border border-gray-200 hover:border-blue-300"
                     }`}
@@ -329,33 +327,6 @@ const FilterSidebar = ({
                 <ProjectFilter
                   value={selectedProject}
                   onChange={setSelectedProject}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Date Filters */}
-        {showFilters.date && (
-          <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-            <div
-              className="flex items-center justify-between cursor-pointer"
-              onClick={() => toggleSection("date")}
-            >
-              <h4 className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                <span className="text-base">📅</span> Tarih Filtreleri
-              </h4>
-              <ChevronDown
-                className={`h-4 w-4 transition-transform ${
-                  collapsedSections.date ? "rotate-180" : ""
-                }`}
-              />
-            </div>
-            {!collapsedSections.date && (
-              <div className="mt-2">
-                <DateFilter
-                  onFilterChange={setDateFilters}
-                  initialFilters={dateFilters}
                 />
               </div>
             )}
@@ -586,32 +557,34 @@ const FilterSidebar = ({
 };
 
 export default function EnhancedOverviewDashboardTab() {
-  // State for sidebar collapse
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { getColor } = useColors();
+  const { filters: globalFilters, setFilters: setGlobalFilters } = useFilters();
 
-  // Use global chart type state with localStorage persistence
-  const [chartType, setChartType] = useState<"pie" | "bar" | "line">(() => {
-    // Initialize from localStorage if available
-    const savedType = localStorage.getItem("globalChartType");
-    return (savedType as "pie" | "bar" | "line") || "pie";
-  });
+  // Use global chart type from filter context
+  const chartType = globalFilters.chartType;
 
-  // Update localStorage when chart type changes
-  useEffect(() => {
-    localStorage.setItem("globalChartType", chartType);
-  }, [chartType]);
-
-  const [selectedPersonnel, setSelectedPersonnel] = useState<string>("all");
-  const [selectedOffice, setSelectedOffice] = useState<string>("all");
-  const [selectedProject, setSelectedProject] = useState<string>("all");
+  // Local state for UI display
   const [visiblePersonnel, setVisiblePersonnel] = useState<string[]>([]);
   const [showPersonnel, setShowPersonnel] = useState<boolean>(true);
-  const [dateFilters, setDateFilters] = useState({
-    startDate: "",
-    endDate: "",
-    month: "",
-    year: "",
+  const [showDetailedTargets, setShowDetailedTargets] = useState<boolean>(false);
+
+  // Use filter context for date filters and project
+  const dateFilters = {
+    startDate: globalFilters.startDate,
+    endDate: globalFilters.endDate,
+    month: globalFilters.selectedMonth,
+    year: globalFilters.selectedYear,
+  };
+  
+  const selectedProject = globalFilters.selectedProject;
+
+  // Fetch sales reps data
+  const { data: salesReps = [] } = useQuery<any[]>({
+    queryKey: ["/api/sales-reps"],
+    queryFn: async () => {
+      const response = await fetch("/api/sales-reps");
+      return response.json();
+    },
   });
 
   // Fetch expense stats with date filtering and project filter
@@ -840,12 +813,12 @@ export default function EnhancedOverviewDashboardTab() {
     : true;
 
   // Add selectedProject to dateFilters for all queries
-  // Define filters once to use across all queries
-  const filters = { ...dateFilters, project: selectedProject };
+  // Define query filters once to use across all queries
+  const queryFilters = { ...dateFilters, project: selectedProject };
 
   // Fetch enhanced stats that combine both data sources
   const { data: enhancedStats } = useQuery<EnhancedStats>({
-    queryKey: ["/api/enhanced-stats", filters],
+    queryKey: ["/api/enhanced-stats", queryFilters],
     refetchInterval: 5000,
   });
 
@@ -857,7 +830,7 @@ export default function EnhancedOverviewDashboardTab() {
 
   // Fetch takipte data
   const { data: takipteData = [] } = useQuery<any[]>({
-    queryKey: ["/api/takipte", filters],
+    queryKey: ["/api/takipte", queryFilters],
   });
 
   // Apply robust project filtering to leadsData
@@ -2731,52 +2704,9 @@ export default function EnhancedOverviewDashboardTab() {
   };
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-gray-100">
-      {/* Toggle button - integrated with sidebar */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-        className={`absolute top-2 z-50 ${
-          sidebarCollapsed ? "left-2" : "left-[196px]"
-        } hover:bg-gray-200 rounded-sm`}
-        title={sidebarCollapsed ? "Filtreleri Göster" : "Filtreleri Gizle"}
-      >
-        {sidebarCollapsed ? (
-          <ChevronRight className="h-4 w-4" />
-        ) : (
-          <ChevronLeft className="h-4 w-4" />
-        )}
-      </Button>
-
-      {/* Compact Sidebar */}
-      <aside className="relative h-screen">
-        <FilterSidebar
-          chartType={chartType}
-          setChartType={setChartType}
-          chartTypeOptions={chartTypeOptions}
-          selectedProject={selectedProject}
-          setSelectedProject={setSelectedProject}
-          dateFilters={dateFilters}
-          setDateFilters={setDateFilters}
-          selectedPersonnel={selectedPersonnel}
-          setSelectedPersonnel={setSelectedPersonnel}
-          selectedOffice={"all"}
-          setSelectedOffice={() => {}}
-          clearCache={clearCache}
-          clearCacheMutation={clearCacheMutation}
-          personnelList={personnelList}
-          activeTab="status"
-          isCollapsed={sidebarCollapsed}
-          setIsCollapsed={setSidebarCollapsed}
-        />
-      </aside>
-      {/* Main content area - desktop-style layout */}
-      <main
-        className={`flex-1 flex flex-col transition-all duration-300 ${
-          sidebarCollapsed ? "ml-0" : "ml-48"
-        } space-y-2 p-2 overflow-auto`}
-      >
+    <div className="min-h-screen bg-gray-50 w-full">
+      {/* Main content area - full width layout */}
+      <main className="w-full flex flex-col space-y-3 p-3 overflow-auto">
         {/* Header - Shows warning if secondary data is missing */}
         {!hasSecondaryData && (
           <div className="flex justify-end mb-4">
@@ -2996,50 +2926,67 @@ export default function EnhancedOverviewDashboardTab() {
 
                 {/* Lead distribution chart by personnel */}
                 <div className="mt-6 p-4 bg-white rounded-lg border">
-                  <h3 className="text-lg font-semibold mb-2">
-                    📊 Personel Lead Dağılımı
-                  </h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-semibold">
+                      📊 Personel Lead Dağılımı
+                    </h3>
+                    <Badge variant="outline" className="text-xs">
+                      {chartType === "pie" ? "🥧 Pasta" : chartType === "line" ? "📈 Çizgi" : "📊 Çubuk"} Grafik
+                    </Badge>
+                  </div>
                   <p className="text-sm text-gray-600 mb-4">
                     Her personelin lead sayısı dağılımı
                   </p>
 
                   <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={personnelStatusMatrix
-                          .filter(
-                            (person) =>
-                              person.name !== "Belirtilmemiş" &&
-                              person.name !== "Atanmamış" &&
-                              (visiblePersonnel.length === 0 ||
-                                visiblePersonnel.includes(person.name)) &&
-                              (showPersonnel || person.name === "Toplam:")
-                          )
-                          .sort((a, b) => b.totalLeads - a.totalLeads)}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="name"
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <YAxis name="Lead Sayısı" />
-                        <Tooltip
-                          formatter={(value) => [
-                            `${value} Lead`,
-                            "Lead Sayısı",
-                          ]}
-                        />
-                        <Legend />
-                        <Bar
-                          dataKey="totalLeads"
-                          name="Lead Sayısı"
-                          fill="#8884d8"
-                        >
-                          {personnelStatusMatrix
+                    <ResponsiveContainer width="100%" height="100%" key={`personnel-chart-${chartType}`}>
+                      {chartType === "pie" ? (
+                        <PieChart>
+                          <Pie
+                            data={personnelStatusMatrix
+                              .filter(
+                                (person) =>
+                                  person.name !== "Belirtilmemiş" &&
+                                  person.name !== "Atanmamış" &&
+                                  (visiblePersonnel.length === 0 ||
+                                    visiblePersonnel.includes(person.name)) &&
+                                  (showPersonnel || person.name === "Toplam:")
+                              )
+                              .sort((a, b) => b.totalLeads - a.totalLeads)}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, value }) => `${name}: ${value}`}
+                            outerRadius={100}
+                            fill="#8884d8"
+                            dataKey="totalLeads"
+                          >
+                            {personnelStatusMatrix
+                              .filter(
+                                (person) =>
+                                  person.name !== "Belirtilmemiş" &&
+                                  person.name !== "Atanmamış" &&
+                                  (visiblePersonnel.length === 0 ||
+                                    visiblePersonnel.includes(person.name)) &&
+                                  (showPersonnel || person.name === "Toplam:")
+                              )
+                              .map((person, index) => (
+                                <Cell
+                                  key={`cell-${person.name}`}
+                                  fill={getUniqueColorForCategory(person.name)}
+                                />
+                              ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(value) => [
+                              `${value} Lead`,
+                              "Lead Sayısı",
+                            ]}
+                          />
+                        </PieChart>
+                      ) : chartType === "line" ? (
+                        <LineChart
+                          data={personnelStatusMatrix
                             .filter(
                               (person) =>
                                 person.name !== "Belirtilmemiş" &&
@@ -3048,15 +2995,87 @@ export default function EnhancedOverviewDashboardTab() {
                                   visiblePersonnel.includes(person.name)) &&
                                 (showPersonnel || person.name === "Toplam:")
                             )
-                            .map((person) => (
-                              <Cell
-                                key={`cell-${person.name}`}
-                                fill={getUniqueColorForCategory(person.name)}
-                              />
-                            ))}
-                          <LabelList dataKey="totalLeads" position="top" />
-                        </Bar>
-                      </BarChart>
+                            .sort((a, b) => b.totalLeads - a.totalLeads)}
+                          margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="name"
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis name="Lead Sayısı" />
+                          <Tooltip
+                            formatter={(value) => [
+                              `${value} Lead`,
+                              "Lead Sayısı",
+                            ]}
+                          />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="totalLeads"
+                            stroke="#8884d8"
+                            strokeWidth={3}
+                            dot={{ fill: "#8884d8", strokeWidth: 2, r: 6 }}
+                          />
+                        </LineChart>
+                      ) : (
+                        <BarChart
+                          data={personnelStatusMatrix
+                            .filter(
+                              (person) =>
+                                person.name !== "Belirtilmemiş" &&
+                                person.name !== "Atanmamış" &&
+                                (visiblePersonnel.length === 0 ||
+                                  visiblePersonnel.includes(person.name)) &&
+                                (showPersonnel || person.name === "Toplam:")
+                            )
+                            .sort((a, b) => b.totalLeads - a.totalLeads)}
+                          margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="name"
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis name="Lead Sayısı" />
+                          <Tooltip
+                            formatter={(value) => [
+                              `${value} Lead`,
+                              "Lead Sayısı",
+                            ]}
+                          />
+                          <Legend />
+                          <Bar
+                            dataKey="totalLeads"
+                            name="Lead Sayısı"
+                            fill="#8884d8"
+                          >
+                            {personnelStatusMatrix
+                              .filter(
+                                (person) =>
+                                  person.name !== "Belirtilmemiş" &&
+                                  person.name !== "Atanmamış" &&
+                                  (visiblePersonnel.length === 0 ||
+                                    visiblePersonnel.includes(person.name)) &&
+                                  (showPersonnel || person.name === "Toplam:")
+                              )
+                              .map((person) => (
+                                <Cell
+                                  key={`cell-${person.name}`}
+                                  fill={getUniqueColorForCategory(person.name)}
+                                />
+                              ))}
+                            <LabelList dataKey="totalLeads" position="top" />
+                          </Bar>
+                        </BarChart>
+                      )}
                     </ResponsiveContainer>
                   </div>
                   <p className="text-xs text-gray-500 mt-2 text-center">
@@ -3075,11 +3094,11 @@ export default function EnhancedOverviewDashboardTab() {
         </Card>
         {/* Main Analytics Tabs */}
         <Tabs defaultValue="status" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="status">Durum Analizi</TabsTrigger>
-            <TabsTrigger value="personnel">Personel Performansı</TabsTrigger>
             <TabsTrigger value="sources">🎯 Kaynak Analizi</TabsTrigger>
             <TabsTrigger value="data-explorer">📊 Lead Verileri</TabsTrigger>
+            {/* Removed Personel Performansı tab */}
             {/* Removed Potansiyel Takipte tab - incorrect statistics */}
             {/* <TabsTrigger value="advanced">🧠 Gelişmiş Analiz</TabsTrigger> */}
           </TabsList>
@@ -3125,7 +3144,105 @@ export default function EnhancedOverviewDashboardTab() {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-6">
+            {/* Sales Target Tracking Section - DISABLED FOR NOW */}
+            {/* 
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
+              <SalesTargetChart
+                leads={leadsData}
+                salesReps={salesReps}
+                className="lg:col-span-1"
+              />
+            */}
+            <div className="grid grid-cols-1 gap-3 mb-4">
+              {/* Quick Performance Metrics */}
+              <Card className="lg:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <TrendingUp className="h-4 w-4" />
+                    Takım Performans Özeti
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center p-2 bg-blue-50 rounded">
+                      <div className="text-base font-bold text-blue-600">
+                        {salesReps.filter((rep: any) => {
+                          const repLeads = leadsData.filter((lead: any) => lead.assignedPersonnel === rep.name);
+                          const salesCount = repLeads.filter((lead: any) => {
+                            const status = lead.status?.toLowerCase() || "";
+                            const wasSaleMade = lead.wasSaleMade?.toLowerCase() || "";
+                            const salesMade = (lead as any)["Müşteriye Satış Yapıldı Mı?"]?.toLowerCase() || "";
+                            return status.includes("satış") || status.includes("satis") || wasSaleMade === "evet" || salesMade === "evet";
+                          }).length;
+                          return salesCount >= (rep.monthlyTarget || 1);
+                        }).length}
+                      </div>
+                      <div className="text-xs text-gray-600">Hedefi Karşılayan</div>
+                    </div>
+                    <div className="text-center p-2 bg-green-50 rounded">
+                      <div className="text-base font-bold text-green-600">
+                        {leadsData.filter((lead: any) => {
+                          const status = lead.status?.toLowerCase() || "";
+                          const wasSaleMade = lead.wasSaleMade?.toLowerCase() || "";
+                          const salesMade = (lead as any)["Müşteriye Satış Yapıldı Mı?"]?.toLowerCase() || "";
+                          return status.includes("satış") || status.includes("satis") || wasSaleMade === "evet" || salesMade === "evet";
+                        }).length}
+                      </div>
+                      <div className="text-xs text-gray-600">Toplam Satış</div>
+                    </div>
+                    <div className="text-center p-2 bg-purple-50 rounded">
+                      <div className="text-base font-bold text-purple-600">
+                        {salesReps.reduce((sum: number, rep: any) => sum + (rep.monthlyTarget || 1), 0)}
+                      </div>
+                      <div className="text-xs text-gray-600">Toplam Hedef</div>
+                    </div>
+                  </div>
+                  
+                  {/* Performance Tips */}
+                  <div className="p-2 bg-blue-50 rounded text-xs">
+                    <div className="font-medium text-blue-800 mb-1">💡 İpuçları:</div>
+                    <div className="text-blue-700 space-y-0.5 text-[10px]">
+                      <div>• Sanayi Merkezi: Aylık 1 satış hedefi</div>
+                      <div>• Kuyum Merkezi: 2 ayda 1 satış hedefi</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Full Sales Target Chart - Expandable */}
+            <Card className="mb-4">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Target className="h-4 w-4" />
+                    Detaylı Satış Hedef Analizi
+                  </CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDetailedTargets(!showDetailedTargets)}
+                    className="text-xs h-7"
+                  >
+                    {showDetailedTargets ? "Gizle" : "Detayları Göster"}
+                  </Button>
+                </div>
+              </CardHeader>
+              {/* Sales Target Details Section - DISABLED FOR NOW */}
+              {/* 
+              {showDetailedTargets && (
+                <CardContent className="pt-0">
+                  <SalesTargetChart
+                    leads={leadsData}
+                    salesReps={salesReps}
+                    showDetailed={true}
+                  />
+                </CardContent>
+              )}
+              */}
+            </Card>
+
+            <div className="grid grid-cols-1 gap-4">
               <Card>
                 <CardHeader>
                   <CardTitle>📊 Lead Durum Dağılımı - Özet Tablosu</CardTitle>
@@ -3136,10 +3253,11 @@ export default function EnhancedOverviewDashboardTab() {
                       <StandardChart
                         title=""
                         data={dashboardMetrics.statusData}
-                        height={500}
+                        height={350}
                         chartType={chartType}
                         showDataTable={false}
-                        className="[&_.grid]:!grid-cols-1 [&_.space-y-4]:!hidden mb-6"
+                        className="[&_.grid]:!grid-cols-1 [&_.space-y-4]:!hidden mb-4"
+                        key={`status-chart-${chartType}`}
                       />
                       <div className="overflow-x-auto">
                         <table className="w-full border-collapse border border-gray-200">
@@ -3208,6 +3326,7 @@ export default function EnhancedOverviewDashboardTab() {
                         chartType={chartType}
                         showDataTable={false}
                         className="[&_.grid]:!grid-cols-1 [&_.space-y-4]:!hidden mb-6"
+                        key={`type-chart-${chartType}`}
                       />
                       <div className="overflow-x-auto">
                         <table className="w-full border-collapse border border-gray-200">
@@ -3264,159 +3383,6 @@ export default function EnhancedOverviewDashboardTab() {
 
             {/* Duplicate Detection Analysis Card - Hidden from main reports per user request */}
             {/* Duplicate lead statistics are now only shown in the dedicated duplicate detection tab */}
-          </TabsContent>
-
-          <TabsContent value="personnel" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>👥 Personel Performans Karşılaştırması</CardTitle>
-                <CardDescription>
-                  Personel bazında lead sayıları
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {dashboardMetrics?.personnelData &&
-                dashboardMetrics.personnelData.length > 0 ? (
-                  <>
-                    {/* Sales Person List with visibility toggle */}
-                    <Card className="mb-6 border border-blue-100 bg-blue-50/30">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                          <Users className="h-4 w-4" />
-                          Personel Görünürlük Ayarları
-                        </CardTitle>
-                        <CardDescription className="text-xs">
-                          Görmek istediğiniz personeli seçin. Varsayılan olarak
-                          sadece Recber ve Yasemin görünür.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <SalesPersonList
-                          salesPersons={dashboardMetrics.personnelData}
-                          onVisibilityChange={setVisiblePersonnel}
-                        />
-                      </CardContent>
-                    </Card>
-
-                    <ResponsiveContainer width="100%" height={400}>
-                      <BarChart
-                        data={dashboardMetrics.personnelData.filter(
-                          (p) =>
-                            (visiblePersonnel.length === 0 ||
-                              visiblePersonnel.includes(p.name)) &&
-                            p.name !== "Atanmamış" &&
-                            p.name !== "Bilinmiyor" &&
-                            p.name !== "Belirtilmemiş"
-                        )}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="name"
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                        />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar
-                          dataKey="leadCount"
-                          name="Lead Sayısı"
-                          radius={[4, 4, 0, 0]}
-                          label={{
-                            position: "top",
-                            formatter: (value: number) => `${value}`,
-                            fill: "#000",
-                            fontSize: 11,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {dashboardMetrics.personnelData
-                            .filter(
-                              (p) =>
-                                (visiblePersonnel.length === 0 ||
-                                  visiblePersonnel.includes(p.name)) &&
-                                p.name !== "Atanmamış" &&
-                                p.name !== "Bilinmiyor" &&
-                                p.name !== "Belirtilmemiş"
-                            )
-                            .map((entry, index) => {
-                              const color = getUniqueColorForCategory(
-                                entry.name
-                              );
-                              return (
-                                <Cell key={`cell-${index}`} fill={color} />
-                              );
-                            })}
-                          <LabelList
-                            dataKey="leadCount"
-                            position="top"
-                            style={{
-                              textAnchor: "middle",
-                              fontSize: "16px",
-                              fontWeight: "bold",
-                              fill: "#374151",
-                            }}
-                          />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-
-                    <DataTable
-                      title="Personel Performans Detayları"
-                      data={dashboardMetrics.personnelData
-                        .filter(
-                          (item) =>
-                            (visiblePersonnel.length === 0 ||
-                              visiblePersonnel.includes(item.name)) &&
-                            item.name !== "Atanmamış" &&
-                            item.name !== "Bilinmiyor" &&
-                            item.name !== "Belirtilmemiş"
-                        )
-                        .map((item) => ({
-                          Personel: {
-                            value: item.name,
-                            custom: (
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-3 h-3 rounded-full"
-                                  style={{
-                                    backgroundColor: getUniqueColorForCategory(
-                                      item.name
-                                    ),
-                                  }}
-                                ></div>
-                                <span>{item.name}</span>
-                              </div>
-                            ),
-                          },
-                          "Lead Sayısı": item.leadCount,
-                          Yüzde: `%${Math.round(
-                            (item.leadCount / dashboardMetrics.totalLeads) * 100
-                          )}`,
-                        }))}
-                      className="mt-6"
-                    />
-                  </>
-                ) : (
-                  <div className="text-center py-8">
-                    <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900">
-                      Personel verisi bulunamadı
-                    </h3>
-                    <p className="mt-2 text-sm text-gray-500">
-                      Personel performans analizi için lead verilerinde personel
-                      bilgisi bulunması gerekiyor.
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Leads dosyalarında "assignedPersonnel" alanının
-                      doldurulduğundan emin olun veya takipte dosyasındaki
-                      "Personel Adı" alanlarını kontrol edin.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </TabsContent>
 
           <TabsContent value="sources" className="space-y-4">
@@ -3565,17 +3531,17 @@ export default function EnhancedOverviewDashboardTab() {
           <div className="space-y-6">
             Advanced Analysis from Main Data Only
             {dashboardMetrics?.leads && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="p-6 shadow-lg border-2 border-indigo-100 dark:border-indigo-800">
-                  <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card className="p-4 shadow-lg border-2 border-indigo-100 dark:border-indigo-800">
+                  <div className="mb-3">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 flex items-center">
                       📊 Gelişmiş Durum Analizi
                     </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
                       Lead durumlarının detaylı incelemesi
                     </p>
                   </div>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={250}>
                     <PieChart>
                       <Pie
                         data={Object.entries(
@@ -3641,16 +3607,16 @@ export default function EnhancedOverviewDashboardTab() {
                   />
                 </Card>
 
-                <Card className="p-6 shadow-lg border-2 border-emerald-100 dark:border-emerald-800">
-                  <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center">
+                <Card className="p-4 shadow-lg border-2 border-emerald-100 dark:border-emerald-800">
+                  <div className="mb-3">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 flex items-center">
                       🏠 Proje Analizi
                     </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
                       En popüler projeler
                     </p>
                   </div>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={250}>
                     <BarChart
                       data={Array.from(
                         new Set(
@@ -3786,40 +3752,38 @@ export default function EnhancedOverviewDashboardTab() {
         </Card>
         {/* Real Negative Analysis Component from Negative Page */}
         {negativeAnalysis && (
-          <Card className="mb-6 border-2 border-red-100 shadow-lg">
+          <Card className="mb-4 border-2 border-red-100 shadow-lg">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-red-700">
-                <AlertTriangle className="h-5 w-5" />
+              <CardTitle className="flex items-center gap-2 text-red-700 text-sm">
+                <AlertTriangle className="h-4 w-4" />
                 📊 En Sık Görülen Olumsuzluk Nedenleri (İlk 10)
               </CardTitle>
-              <CardDescription>
-                📋 Tabloyu Gizle - 10 Neden - İlk 10 neden gösteriliyor Yüzdelik
-                Oranı Toplam Olumsuzluk Sayısı Üzerinden Hesaplanıyor
+              <CardDescription className="text-xs">
+                İlk 10 neden gösteriliyor - Yüzdelik oranı toplam olumsuzluk sayısı üzerinden hesaplanıyor
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
                   {negativeAnalysis.reasonAnalysis
                     .slice(0, 10)
                     .map((reason, index) => (
                       <div
                         key={index}
-                        className="bg-gray-50 p-3 rounded-lg border"
+                        className="bg-gray-50 p-2 rounded border"
                       >
                         <div
-                          className="text-sm font-medium text-gray-800 truncate"
+                          className="text-xs font-medium text-gray-800 truncate"
                           title={reason.reason}
                         >
                           {reason.reason}
                         </div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          {reason.count} lead (
-                          {Number(reason.percentage).toFixed(1)}%)
+                        <div className="text-[10px] text-gray-600 mt-1">
+                          {reason.count} lead ({Number(reason.percentage).toFixed(1)}%)
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                           <div
-                            className="h-2 rounded-full"
+                            className="h-1.5 rounded-full"
                             style={{
                               width: `${reason.percentage}%`,
                               backgroundColor: getUniqueColorForCategory(

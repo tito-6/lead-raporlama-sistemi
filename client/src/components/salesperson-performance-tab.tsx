@@ -47,7 +47,6 @@ import {
   Calculator,
 } from "lucide-react";
 import StandardChart from "@/components/charts/StandardChart";
-import DateFilter from "./ui/date-filter";
 import { useColors } from "@/hooks/use-colors";
 
 interface SalespersonPerformanceTabProps {
@@ -410,16 +409,9 @@ export default function SalespersonPerformanceTab({
         )}
       </div>
 
-      {/* Date Filter and Chart Controls */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-1">
-          <DateFilter
-            onFilterChange={setDateFilters}
-            initialFilters={dateFilters}
-          />
-        </div>
-
-        <div className="lg:col-span-2">
+      {/* Chart Controls */}
+      <div className="grid grid-cols-1 gap-4">
+        <div>
           <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg h-full">
             <div className="flex gap-2">
               <Select

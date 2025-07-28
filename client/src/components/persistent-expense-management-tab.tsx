@@ -11,7 +11,6 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import DateFilter from "@/components/ui/date-filter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { LeadExpense } from "@shared/schema";
@@ -39,16 +38,8 @@ interface ExpenseFormData {
   expenseType: "agency_fee" | "ads_expense";
   amountTL: string;
   description: string;
-}
 
 export default function PersistentExpenseManagementTab() {
-  const [dateFilters, setDateFilters] = useState({
-    startDate: "",
-    endDate: "",
-    month: "",
-    year: "",
-  });
-
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<LeadExpense | null>(
     null
@@ -72,28 +63,20 @@ export default function PersistentExpenseManagementTab() {
     },
   });
 
-  // Fetch expense stats with date filtering
+  // Fetch expense stats
   const { data: expenseStats } = useQuery<any>({
-    queryKey: ["/api/expense-stats", dateFilters],
+    queryKey: ["/api/expense-stats"],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      Object.entries(dateFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const response = await fetch(`/api/expense-stats?${params.toString()}`);
+      const response = await fetch(`/api/expense-stats`);
       return response.json();
     },
   });
 
   // Fetch leads data for sales analysis
   const { data: leadsData = [] } = useQuery({
-    queryKey: ["/api/leads", dateFilters],
+    queryKey: ["/api/leads"],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      Object.entries(dateFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const response = await fetch(`/api/leads?${params.toString()}`);
+      const response = await fetch(`/api/leads`);
       return response.json();
     },
   });
@@ -256,10 +239,6 @@ export default function PersistentExpenseManagementTab() {
           Gider Yönetimi (Kalıcı)
         </h2>
         <div className="flex items-center gap-2">
-          <DateFilter 
-            onFilterChange={setDateFilters} 
-            initialFilters={dateFilters} 
-          />
           <div className="flex gap-2">
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>

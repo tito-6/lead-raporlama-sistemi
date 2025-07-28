@@ -96,3 +96,70 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+/* Custom date input styling */
+input[type="date"] {
+  color-scheme: light;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  border: none;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-datetime-edit {
+  color: inherit;
+}
+
+input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  padding: 0;
+}
+
+input[type="date"]::-webkit-datetime-edit-text {
+  color: inherit;
+}
+
+input[type="date"]::-webkit-datetime-edit-month-field {
+  color: inherit;
+}
+
+input[type="date"]::-webkit-datetime-edit-day-field {
+  color: inherit;
+}
+
+input[type="date"]::-webkit-datetime-edit-year-field {
+  color: inherit;
+}
+
+/* Draggable sidebar improvements */
+.react-draggable-dragging {
+  transition: none !important;
+}
+
+.sidebar-drag-handle {
+  cursor: grab;
+  user-select: none;
+}
+
+.sidebar-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Table hover effects */
+.table-hover tr:hover {
+  background-color: #f8fafc;
+  transition: background-color 0.2s ease;
+}

@@ -49,7 +49,6 @@ import {
 } from "lucide-react";
 import { MasterDataTable } from "@/components/ui/master-data-table";
 import { DataTable } from "@/components/ui/data-table";
-import DateFilter from "./ui/date-filter";
 import UniversalFilter, { UniversalFilters } from "./ui/universal-filter";
 import NegativeReasonsSummaryTable from "./negative-reasons-summary-table";
 import {
@@ -80,26 +79,11 @@ export default function OlumsuzAnaliziTab() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const [selectedPersonnel, setSelectedPersonnel] = useState<string>("all");
-  const [selectedReason, setSelectedReason] = useState<string>("all");
-  const [chartType, setChartType] = useState<"pie" | "bar" | "line">("bar");
+  // Default to bar chart since we've removed the chart type selection
+  const chartType = "bar" as "pie" | "bar" | "line";
   const [viewMode, setViewMode] = useState<"summary" | "detailed">("summary");
-  const [dateFilters, setDateFilters] = useState({
-    startDate: "",
-    endDate: "",
-    month: "",
-    year: "",
-  });
-  const [selectedProject, setSelectedProject] = useState<string>("all");
   const [showReasonTable, setShowReasonTable] = useState<boolean>(true);
   const [showSummaryTable, setShowSummaryTable] = useState<boolean>(true);
-
-  // Chart type options matching the takipte-analizi design
-  const chartTypeOptions = [
-    { value: "pie" as const, label: "Pasta Grafik", icon: "🥧" },
-    { value: "bar" as const, label: "Sütun Grafik", icon: "📊" },
-    { value: "line" as const, label: "Çizgi Grafik", icon: "📈" },
-  ];
 
   const [universalFilters, setUniversalFilters] = useState<UniversalFilters>({
     startDate: "",
@@ -113,43 +97,13 @@ export default function OlumsuzAnaliziTab() {
   });
 
   // Add project to universalFilters
-  const filters = { ...universalFilters, project: selectedProject };
-
-  // Cache clearing function
-  const clearCache = async () => {
-    try {
-      // Clear all queries from the cache
-      await queryClient.invalidateQueries();
-      // Alternatively, you can be more specific:
-      // await queryClient.invalidateQueries({ queryKey: ["/api/negative-analysis"] });
-      // await queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
-
-      toast({
-        title: "✅ Önbellek Temizlendi",
-        description: "Olumsuzluk analizi verileri yeniden yüklenecek.",
-        duration: 3000,
-      });
-    } catch (error) {
-      toast({
-        title: "❌ Hata",
-        description: "Önbellek temizlenirken bir hata oluştu.",
-        variant: "destructive",
-        duration: 3000,
-      });
-    }
-  };
+  const filters = { ...universalFilters, project: "all" };
 
   // Fetch negative analysis data
   const { data: negativeAnalysis, isLoading } = useQuery<NegativeAnalysisData>({
-    queryKey: ["/api/negative-analysis", dateFilters],
+    queryKey: ["/api/negative-analysis"],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      Object.entries(dateFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const response = await fetch(
-        `/api/negative-analysis?${params.toString()}`
-      );
+      const response = await fetch(`/api/negative-analysis`);
       return response.json();
     },
     refetchInterval: 5000,
@@ -157,13 +111,9 @@ export default function OlumsuzAnaliziTab() {
 
   // Fetch detailed leads data for advanced table
   const { data: leadsData = [] } = useQuery({
-    queryKey: ["/api/leads", dateFilters],
+    queryKey: ["/api/leads"],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      Object.entries(dateFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const response = await fetch(`/api/leads?${params.toString()}`);
+      const response = await fetch(`/api/leads`);
       return response.json();
     },
   });
@@ -175,35 +125,10 @@ export default function OlumsuzAnaliziTab() {
       const isNegativeLead =
         lead.status?.includes("Olumsuz") ||
         lead.status?.toLowerCase().includes("olumsuz");
-      const matchesPersonnel =
-        selectedPersonnel === "all" ||
-        lead.assignedPersonnel === selectedPersonnel;
-      const reasonToCheck =
-        lead.negativeReason && lead.negativeReason.trim() !== ""
-          ? lead.negativeReason.trim()
-          : lead.status || "Belirtilmemiş";
-      const matchesReason =
-        selectedReason === "all" || reasonToCheck === selectedReason;
 
-      // Additional universal filters
-      const matchesProject =
-        !universalFilters.projectName ||
-        universalFilters.projectName === "all-projects" ||
-        lead.projectName === universalFilters.projectName;
-      const matchesLeadType =
-        !universalFilters.leadType ||
-        universalFilters.leadType === "all-types" ||
-        lead.leadType === universalFilters.leadType;
-
-      return (
-        isNegativeLead &&
-        matchesPersonnel &&
-        matchesReason &&
-        matchesProject &&
-        matchesLeadType
-      );
+      return isNegativeLead;
     });
-  }, [leadsData, selectedPersonnel, selectedReason, universalFilters]);
+  }, [leadsData]);
 
   // Get unique personnel and reasons for filtering - use same logic as summary table
   const uniquePersonnel = useMemo(() => {
@@ -249,30 +174,20 @@ export default function OlumsuzAnaliziTab() {
   const optimizedReasonData = useMemo(() => {
     if (!negativeAnalysis?.reasonAnalysis) return [];
 
-    if (selectedPersonnel === "all") {
-      // Show only top 10 reasons when all personnel selected
-      return negativeAnalysis.reasonAnalysis
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10)
-        .map((item) => ({
-          ...item,
-          name:
-            item.reason.length > 25
-              ? item.reason.substring(0, 25) + "..."
-              : item.reason,
-          fullReason: item.reason,
-          percentage: Math.round(item.percentage * 10) / 10, // Round to 1 decimal place
-        }));
-    }
-
-    // Show all reasons when specific personnel selected
-    return negativeAnalysis.reasonAnalysis.map((item) => ({
-      ...item,
-      name: item.reason,
-      fullReason: item.reason,
-      percentage: Math.round(item.percentage * 10) / 10, // Round to 1 decimal place
-    }));
-  }, [negativeAnalysis, selectedPersonnel]);
+    // Always show only top 10 reasons
+    return negativeAnalysis.reasonAnalysis
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+      .map((item) => ({
+        ...item,
+        name:
+          item.reason.length > 25
+            ? item.reason.substring(0, 25) + "..."
+            : item.reason,
+        fullReason: item.reason,
+        percentage: Math.round(item.percentage * 10) / 10, // Round to 1 decimal place
+      }));
+  }, [negativeAnalysis]);
 
   // Color mapping for negative reasons
   const getReasonColor = (reason: string, index: number) => {
@@ -327,15 +242,6 @@ export default function OlumsuzAnaliziTab() {
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button
-                onClick={clearCache}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2 hover:bg-red-50 border-red-200"
-              >
-                <RefreshCw className="h-4 w-4" />
-                🗑️ Önbelleği Temizle
-              </Button>
               <Select
                 value={viewMode}
                 onValueChange={(v) => setViewMode(v as "summary" | "detailed")}
@@ -348,90 +254,12 @@ export default function OlumsuzAnaliziTab() {
                   <SelectItem value="detailed">Detaylı</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="flex gap-2">
-                {chartTypeOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => setChartType(option.value)}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      chartType === option.value
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-                    }`}
-                  >
-                    {option.icon} {option.label}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <DateFilter
-              onFilterChange={setDateFilters}
-              initialFilters={dateFilters}
-            />
-            <Select
-              value={universalFilters.projectName}
-              onValueChange={(value) =>
-                setUniversalFilters({
-                  ...universalFilters,
-                  projectName: value,
-                })
-              }
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Proje Seçin" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-projects">Tüm Projeler</SelectItem>
-                {(
-                  Array.from(
-                    new Set(
-                      filteredNegativeLeads
-                        .map((lead: any) => lead.projectName)
-                        .filter(Boolean)
-                    )
-                  ) as string[]
-                ).map((project) => (
-                  <SelectItem key={project} value={project}>
-                    {project}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedPersonnel}
-              onValueChange={setSelectedPersonnel}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Personel Seçin" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tüm Personel</SelectItem>
-                {uniquePersonnel.map((personnel) => (
-                  <SelectItem key={personnel} value={personnel}>
-                    {personnel}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedReason} onValueChange={setSelectedReason}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Neden Seçin" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tüm Nedenler</SelectItem>
-                {uniqueReasons.map((reason: string) => (
-                  <SelectItem key={reason} value={reason}>
-                    {reason.length > 30
-                      ? reason.substring(0, 30) + "..."
-                      : reason}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="text-center py-2">
+            <p className="text-sm text-gray-600">Tüm filtreleme global filtre bileşeninden yapılır</p>
           </div>
         </CardContent>
       </Card>
@@ -540,7 +368,7 @@ export default function OlumsuzAnaliziTab() {
             >
               {optimizedReasonData.length} Neden
             </Badge>
-            {selectedPersonnel === "all" && (
+            {true && (
               <Badge variant="secondary">İlk 10 neden gösteriliyor</Badge>
             )}
           </div>
@@ -694,7 +522,6 @@ export default function OlumsuzAnaliziTab() {
           {showSummaryTable && (
             <NegativeReasonsSummaryTable
               leads={leadsData}
-              selectedPersonnel={selectedPersonnel}
             />
           )}
         </TabsContent>
@@ -816,160 +643,8 @@ export default function OlumsuzAnaliziTab() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Advanced Filtering for Detailed List */}
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <Filter className="h-4 w-4" />
-                  Detaylı Liste Filtreleri
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <span className="text-xs font-medium">Satış Personeli</span>
-                    <Select
-                      value={selectedPersonnel}
-                      onValueChange={setSelectedPersonnel}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Personel seçin" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tüm Personel</SelectItem>
-                        {uniquePersonnel.map((personnel) => (
-                          <SelectItem key={personnel} value={personnel}>
-                            {personnel}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <span className="text-xs font-medium">
-                      Olumsuzluk Nedeni
-                    </span>
-                    <Select
-                      value={selectedReason}
-                      onValueChange={setSelectedReason}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Neden seçin" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tüm Nedenler</SelectItem>
-                        {uniqueReasons.map((reason: string) => (
-                          <SelectItem key={reason} value={reason}>
-                            {reason.length > 30
-                              ? reason.substring(0, 30) + "..."
-                              : reason}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <span className="text-xs font-medium">Proje</span>
-                    <Select
-                      value={universalFilters.projectName}
-                      onValueChange={(value) =>
-                        setUniversalFilters({
-                          ...universalFilters,
-                          projectName: value,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Proje seçin" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all-projects">
-                          Tüm Projeler
-                        </SelectItem>
-                        {(
-                          Array.from(
-                            new Set(
-                              filteredNegativeLeads
-                                .map((lead: any) => lead.projectName)
-                                .filter(Boolean)
-                            )
-                          ) as string[]
-                        ).map((project) => (
-                          <SelectItem key={project} value={project}>
-                            {project}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <span className="text-xs font-medium">Lead Tipi</span>
-                    <Select
-                      value={universalFilters.leadType}
-                      onValueChange={(value) =>
-                        setUniversalFilters({
-                          ...universalFilters,
-                          leadType: value,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Tip seçin" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all-types">Tüm Tipler</SelectItem>
-                        <SelectItem value="satis">Satılık</SelectItem>
-                        <SelectItem value="kiralama">Kiralık</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex items-center gap-2">
-                  <Badge variant="outline">
-                    {filteredNegativeLeads.length} olumsuz lead görüntüleniyor
-                  </Badge>
-                  <Badge variant="secondary">
-                    {uniquePersonnel.length} personel
-                  </Badge>
-                  <Badge variant="secondary">
-                    {uniqueReasons.length} neden
-                  </Badge>
-                  <Badge variant="secondary">
-                    {
-                      Array.from(
-                        new Set(
-                          filteredNegativeLeads
-                            .map((lead: any) => lead.projectName)
-                            .filter(Boolean)
-                        )
-                      ).length
-                    }{" "}
-                    proje
-                  </Badge>
-                  {(selectedPersonnel !== "all" ||
-                    selectedReason !== "all" ||
-                    universalFilters.projectName ||
-                    universalFilters.leadType) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedPersonnel("all");
-                        setSelectedReason("all");
-                        setUniversalFilters({
-                          ...universalFilters,
-                          projectName: "all-projects",
-                          leadType: "all-types",
-                        });
-                      }}
-                      className="h-7 text-xs"
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Filtreleri Temizle
-                    </Button>
-                  )}
-                </div>
+              <div className="text-center py-4">
+                <p className="text-sm text-gray-600">Tüm filtreleme global filtre bileşeninden yapılır</p>
               </div>
 
               {filteredNegativeLeads.length > 0 ? (
@@ -1062,18 +737,6 @@ export default function OlumsuzAnaliziTab() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {selectedPersonnel === "all" && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Optimize Edilmiş Görünüm:</strong> Tüm personel seçildiğinde
-            performans için sadece en sık görülen 10 olumsuzluk nedeni
-            gösterilmektedir. Belirli bir personel seçerek o personele ait tüm
-            olumsuzluk nedenlerini görebilirsiniz.
-          </AlertDescription>
-        </Alert>
-      )}
     </div>
   );
 }

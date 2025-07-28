@@ -36,7 +36,6 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
-import AppLayout from "./layouts/app-layout";
 import ProjectFilter from "./project-filter";
 import StandardChart from "./charts/StandardChart";
 import { prepareChartData } from "./charts/chart-utils";

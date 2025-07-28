@@ -46,7 +46,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import DateFilter from "@/components/ui/date-filter";
 
 interface ExpenseFormData {
   month: string;
@@ -80,13 +79,6 @@ interface ExchangeRateInfo {
 }
 
 export default function UnifiedExpenseManagementTab() {
-  const [dateFilters, setDateFilters] = useState({
-    startDate: "",
-    endDate: "",
-    month: "",
-    year: "",
-  });
-
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<LeadExpense | null>(
     null
@@ -122,28 +114,20 @@ export default function UnifiedExpenseManagementTab() {
       staleTime: 10 * 60 * 1000, // Consider data stale after 10 minutes
     });
 
-  // Fetch expense stats with date filtering
+  // Fetch expense stats
   const { data: expenseStats } = useQuery<ExpenseStats>({
-    queryKey: ["/api/expense-stats", dateFilters],
+    queryKey: ["/api/expense-stats"],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      Object.entries(dateFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const response = await fetch(`/api/expense-stats?${params.toString()}`);
+      const response = await fetch(`/api/expense-stats`);
       return response.json();
     },
   });
 
   // Fetch leads data for cost analysis
   const { data: leadsData = [] } = useQuery({
-    queryKey: ["/api/leads", dateFilters],
+    queryKey: ["/api/leads"],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      Object.entries(dateFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const response = await fetch(`/api/leads?${params.toString()}`);
+      const response = await fetch(`/api/leads`);
       return response.json();
     },
   });
@@ -330,24 +314,14 @@ export default function UnifiedExpenseManagementTab() {
 
   return (
     <div className="space-y-6">
-      {/* Date Filter */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-1">
-          <DateFilter
-            onFilterChange={setDateFilters}
-            initialFilters={dateFilters}
-          />
-        </div>
-
-        <div className="lg:col-span-3">
-          {/* Exchange Rate Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5" />
-                  USD/TL Kuru (TCMB)
-                </div>
+      {/* Exchange Rate Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              USD/TL Kuru (TCMB)
+            </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -394,8 +368,6 @@ export default function UnifiedExpenseManagementTab() {
               )}
             </CardContent>
           </Card>
-        </div>
-      </div>
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-3">

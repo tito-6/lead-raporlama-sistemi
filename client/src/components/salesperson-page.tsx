@@ -543,6 +543,54 @@ export default function SalespersonPage({
         </Card>
       </div>
 
+      {/* Sales Target Tracking Section - DISABLED FOR NOW */}
+      {/* 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 my-6">
+        <SalesTargetChart
+          leads={filteredLeads}
+          salesReps={[{ name: salespersonName, monthlyTarget: 1, isActive: true, id: 1 }]}
+          className="h-auto"
+        />
+      </div>
+      */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 my-6">
+        
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Target className="h-4 w-4" />
+              Hedef Analizi
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-center p-3 bg-green-50 rounded">
+                <div className="text-lg font-bold text-green-600">
+                  {stats.satisYapilan}
+                </div>
+                <div className="text-xs text-gray-600">Bu Dönem Satış</div>
+              </div>
+              <div className="text-center p-3 bg-blue-50 rounded">
+                <div className="text-lg font-bold text-blue-600">
+                  {stats.conversion}%
+                </div>
+                <div className="text-xs text-gray-600">Dönüşüm Oranı</div>
+              </div>
+            </div>
+            
+            {/* Project-based targets */}
+            <div className="p-2 bg-gray-50 rounded text-xs">
+              <div className="font-medium text-gray-700 mb-1">🎯 Proje Hedefleri:</div>
+              <div className="text-gray-600 space-y-0.5">
+                <div>• Sanayi Merkezi: Aylık 1 satış</div>
+                <div>• Kuyum Merkezi: 2 ayda 1 satış</div>
+                <div>• Mevcut Performans: {stats.satisYapilan >= 1 ? "✅ Hedef karşılandı" : "⏳ Hedef bekleniyor"}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Cost Analysis Section */}
       {costMetrics && (
         <div className="space-y-4">

@@ -34,7 +34,6 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { useFilters } from "@/contexts/filter-context";
 import {
   Phone,
   Clock,
@@ -267,11 +266,15 @@ export default function RefactoredTakipAnaliziTab() {
   const [selectedCommunicationType, setSelectedCommunicationType] =
     useState<string>("all");
   const [selectedProject, setSelectedProject] = useState<string>(""); // Added project filter
+  const [chartType, setChartType] = useState<"pie" | "bar" | "line">("bar");
   const [viewMode, setViewMode] = useState<"summary" | "detailed">("summary");
-  
-  // Get chart type from global filter context
-  const { filters } = useFilters();
-  const chartType = filters.chartType;
+
+  // Chart type options
+  const chartTypeOptions = [
+    { value: "pie" as const, label: "Pasta Grafik", icon: "🥧" },
+    { value: "bar" as const, label: "Sütun Grafik", icon: "📊" },
+    { value: "line" as const, label: "Çizgi Grafik", icon: "📈" },
+  ];
 
   // Fetch takipte data
   const { data: takipteData = [], isLoading } = useQuery<TakipteData[]>({
@@ -469,6 +472,16 @@ export default function RefactoredTakipAnaliziTab() {
       );
     }).length;
 
+    // Debug appointment count
+    console.log("🔍 Debug Appointment Count:", {
+      totalFilteredData: filteredData.length,
+      appointmentCount,
+      sampleAppointmentValues: filteredData.slice(0, 5).map((item) => ({
+        customer: getCustomerName(item),
+        appointment: item["Randevu Var Mı ?"],
+      })),
+    });
+
     // Score analysis
     const scores = filteredData
       .map((item) => parseInt(item["Puan"]) || 0)
@@ -535,40 +548,120 @@ export default function RefactoredTakipAnaliziTab() {
         </div>
       </div>
 
-      {/* Analysis Info */}
-      {analytics && (
-        <Card className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-lg text-blue-800">
-              <Activity className="h-5 w-5" />
-              📊 Takip Analizi Özeti
-            </CardTitle>
-            <CardDescription className="text-blue-700">
-              Toplam {analytics.total} takip faaliyeti analiz edildi
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <div className="p-3 bg-white rounded-lg border">
-                <div className="text-2xl font-bold text-blue-600">{analytics.total}</div>
-                <div className="text-sm text-gray-600">Toplam Takip</div>
+      {/* Simple Info Card */}
+      <Card className="p-4 bg-gray-50">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Settings className="h-5 w-5" />
+            Takip Analizi
+          </CardTitle>
+          <CardDescription>
+            Global filtre bileşenini kullanarak filtreleme yapın
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center">
+            <p>İstatistik verileri yükleniyor...</p>
+          </div>
+        </CardContent>
+      </Card>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                  📋 Sonuç
+                </label>
+                <Select
+                  value={selectedResult}
+                  onValueChange={setSelectedResult}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Sonuç Seçin" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tüm Sonuçlar</SelectItem>
+                    {uniqueResults.map((result) => (
+                      <SelectItem key={result} value={result}>
+                        {result}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="p-3 bg-white rounded-lg border">
-                <div className="text-2xl font-bold text-orange-600">{analytics.reminderCount}</div>
-                <div className="text-sm text-gray-600">Hatırlatma</div>
-              </div>
-              <div className="p-3 bg-white rounded-lg border">
-                <div className="text-2xl font-bold text-green-600">{analytics.appointmentCount}</div>
-                <div className="text-sm text-gray-600">Randevu</div>
-              </div>
-              <div className="p-3 bg-white rounded-lg border">
-                <div className="text-2xl font-bold text-purple-600">{analytics.averageScore}</div>
-                <div className="text-sm text-gray-600">Ort. Puan</div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                  � İletişim Tipi
+                </label>
+                <Select
+                  value={selectedCommunicationType}
+                  onValueChange={setSelectedCommunicationType}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="İletişim Tipi" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tüm Tipler</SelectItem>
+                    {uniqueCommunicationTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+
+          {/* Fourth Row: Chart Controls and Actions */}
+          <div className="flex flex-wrap gap-4 items-center justify-between pt-4 border-t border-gray-200">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">
+                � Grafik Türü
+              </label>
+              <div className="flex space-x-2">
+                {chartTypeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setChartType(option.value)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      chartType === option.value
+                        ? "bg-blue-500 text-white shadow-lg transform scale-105"
+                        : "bg-white text-gray-700 hover:bg-blue-50 border border-gray-200 hover:border-blue-300"
+                    }`}
+                  >
+                    {option.icon} {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col items-end gap-3">
+              <div className="flex gap-2 text-sm">
+                <Badge
+                  variant="outline"
+                  className="bg-purple-50 text-purple-700 border-purple-200"
+                >
+                  📞 Takip Data
+                </Badge>
+                <Select
+                  value={viewMode}
+                  onValueChange={(v) =>
+                    setViewMode(v as "summary" | "detailed")
+                  }
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="summary">Özet</SelectItem>
+                    <SelectItem value="detailed">Detaylı</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Summary Alert */}
       {analytics && (

@@ -37,7 +37,8 @@ import { useFilters } from "@/contexts/filter-context";
 
 function FilterSidebar() {
   const [collapsed, setCollapsed] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [position, setPosition] = useState({ x: 20, y: 20 });
+  const [isDragging, setIsDragging] = useState(false);
   const { filters, setFilters, resetFilters, clearCache, filteredLeads } =
     useFilters();
 
@@ -68,9 +69,14 @@ function FilterSidebar() {
     localStorage.setItem("filterSidebarCollapsed", String(collapsed));
   }, [collapsed]);
 
-  // Handle drag stop to save position
+  // Handle drag start and stop
+  const handleDragStart = () => {
+    setIsDragging(true);
+  };
+
   const handleDragStop = (_e: any, data: any) => {
     setPosition({ x: data.x, y: data.y });
+    setIsDragging(false);
   };
 
   const toggleCollapse = () => {
@@ -139,41 +145,73 @@ function FilterSidebar() {
     <Draggable
       handle=".sidebar-drag-handle"
       position={position}
+      onStart={handleDragStart}
       onStop={handleDragStop}
-      bounds="body"
+      bounds="parent"
+      enableUserSelectHack={false}
+      scale={1}
     >
       <div
-        className={`fixed z-50 ${
-          collapsed ? "w-12" : "w-64"
-        } bg-white border border-gray-100 rounded-md shadow-md h-auto max-h-[95vh] overflow-y-auto transition-all duration-200`}
+        className={`fixed z-50 transition-all duration-300 ease-in-out ${
+          collapsed ? "w-16" : "w-64"
+        } bg-white border-2 border-gray-200 rounded-lg shadow-lg h-auto max-h-[95vh] overflow-y-auto hover:shadow-xl ${
+          isDragging ? 'cursor-grabbing shadow-2xl scale-105' : 'cursor-auto'
+        }`}
+        style={{
+          minHeight: collapsed ? '60px' : '80px',
+          backdropFilter: 'blur(10px)',
+          background: 'rgba(255, 255, 255, 0.95)',
+          transform: isDragging ? 'rotate(1deg)' : 'rotate(0deg)',
+        }}
       >
-        {/* Drag handle */}
-        <div className="sidebar-drag-handle flex items-center justify-between p-1.5 bg-blue-50 border-b border-blue-100 cursor-move">
-          <div className="flex items-center gap-1.5">
-            <Move className="h-3 w-3 text-blue-600" />
+        {/* Always visible prominent toggle button when collapsed */}
+        {collapsed && (
+          <div className="absolute -right-3 top-4 z-60">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={toggleCollapse}
+              className="h-10 w-10 p-0 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg border-2 border-white transition-all duration-200 hover:scale-105"
+              title="Filtreleri Aç"
+            >
+              <Filter className="h-5 w-5" />
+            </Button>
+          </div>
+        )}
+
+        {/* Drag handle - Always visible */}
+        <div className="sidebar-drag-handle flex items-center justify-between p-2 bg-gradient-to-r from-blue-500 to-blue-600 border-b border-blue-700 cursor-move rounded-t-lg select-none">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <div className="w-1 h-1 bg-white rounded-full opacity-70"></div>
+              <div className="w-1 h-1 bg-white rounded-full opacity-70"></div>
+              <div className="w-1 h-1 bg-white rounded-full opacity-70"></div>
+              <div className="w-1 h-1 bg-white rounded-full opacity-70"></div>
+            </div>
+            <Move className="h-4 w-4 text-white" />
             {!collapsed && (
-              <span className="text-xs font-medium text-blue-700">
-                Filtreler
+              <span className="text-sm font-medium text-white">
+                Filtreler - Sürüklenebilir
               </span>
             )}
           </div>
-          <div className="flex items-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleCollapse}
-              className="h-6 w-6 p-0 rounded-full hover:bg-blue-100"
-            >
-              {collapsed ? (
-                <ChevronRight className="h-3 w-3" />
-              ) : (
-                <ChevronLeft className="h-3 w-3" />
-              )}
-            </Button>
-          </div>
+          {/* Collapse button when expanded */}
+          {!collapsed && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleCollapse}
+                className="h-7 w-7 p-0 rounded-full hover:bg-blue-400 hover:bg-opacity-30 text-white shadow-sm border border-white border-opacity-20"
+                title="Daralt"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
 
-        {!collapsed ? (
+        {!collapsed && (
           <div className="p-2 space-y-2">
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -481,25 +519,10 @@ function FilterSidebar() {
               )}
 
               {filters.dateFilterType === "custom" && (
-                <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="grid grid-cols-1 gap-2 mt-2">
                   <div className="flex flex-col">
                     <Label className="text-xs mb-1">Başlangıç</Label>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const datepicker = document.getElementById(
-                            "start-date-picker"
-                          ) as HTMLInputElement;
-                          if (datepicker && datepicker.showPicker)
-                            datepicker.showPicker();
-                        }}
-                        className="h-8 px-2 flex-grow-0"
-                      >
-                        <Calendar className="h-4 w-4" />
-                      </Button>
+                    <div className="relative">
                       <Input
                         id="start-date-picker"
                         type="date"
@@ -507,28 +530,22 @@ function FilterSidebar() {
                         onChange={(e) =>
                           handleFilterChange("startDate", e.target.value)
                         }
-                        className="h-8 w-full text-xs"
+                        className="h-8 w-full text-xs pr-8 cursor-pointer"
+                        style={{
+                          colorScheme: "light",
+                          WebkitAppearance: "none",
+                        }}
                       />
+                      <div 
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none"
+                      >
+                        <Calendar className="h-4 w-4 text-gray-400" />
+                      </div>
                     </div>
                   </div>
                   <div className="flex flex-col">
                     <Label className="text-xs mb-1">Bitiş</Label>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const datepicker = document.getElementById(
-                            "end-date-picker"
-                          ) as HTMLInputElement;
-                          if (datepicker && datepicker.showPicker)
-                            datepicker.showPicker();
-                        }}
-                        className="h-8 px-2 flex-grow-0"
-                      >
-                        <Calendar className="h-4 w-4" />
-                      </Button>
+                    <div className="relative">
                       <Input
                         id="end-date-picker"
                         type="date"
@@ -536,9 +553,104 @@ function FilterSidebar() {
                         onChange={(e) =>
                           handleFilterChange("endDate", e.target.value)
                         }
-                        className="h-8 w-full text-xs"
+                        className="h-8 w-full text-xs pr-8 cursor-pointer"
+                        style={{
+                          colorScheme: "light",
+                          WebkitAppearance: "none",
+                        }}
                       />
+                      <div 
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none"
+                      >
+                        <Calendar className="h-4 w-4 text-gray-400" />
+                      </div>
                     </div>
+                  </div>
+                  
+                  {/* Quick Date Selection Buttons */}
+                  <div className="grid grid-cols-2 gap-1 mt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const lastWeek = new Date(today);
+                        lastWeek.setDate(today.getDate() - 7);
+                        
+                        const startDate = lastWeek.toISOString().split('T')[0];
+                        const endDate = today.toISOString().split('T')[0];
+                        
+                        setFilters({ 
+                          startDate, 
+                          endDate 
+                        });
+                      }}
+                      className="h-7 px-2 text-xs font-medium"
+                    >
+                      Son 7 Gün
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const lastMonth = new Date(today);
+                        lastMonth.setMonth(today.getMonth() - 1);
+                        
+                        const startDate = lastMonth.toISOString().split('T')[0];
+                        const endDate = today.toISOString().split('T')[0];
+                        
+                        setFilters({ 
+                          startDate, 
+                          endDate 
+                        });
+                      }}
+                      className="h-7 px-2 text-xs font-medium"
+                    >
+                      Son Ay
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                        
+                        const startDate = startOfMonth.toISOString().split('T')[0];
+                        const endDate = today.toISOString().split('T')[0];
+                        
+                        setFilters({ 
+                          startDate, 
+                          endDate 
+                        });
+                      }}
+                      className="h-7 px-2 text-xs font-medium"
+                    >
+                      Bu Ay
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const startOfYear = new Date(today.getFullYear(), 0, 1);
+                        
+                        const startDate = startOfYear.toISOString().split('T')[0];
+                        const endDate = today.toISOString().split('T')[0];
+                        
+                        setFilters({ 
+                          startDate, 
+                          endDate 
+                        });
+                      }}
+                      className="h-7 px-2 text-xs font-medium"
+                    >
+                      Bu Yıl
+                    </Button>
                   </div>
                 </div>
               )}
@@ -666,85 +778,55 @@ function FilterSidebar() {
               <Label className="flex items-center gap-1.5 text-xs font-medium">
                 <BarChart3 className="h-3 w-3 text-blue-600" />
                 Grafik Tipi
+                <Badge variant="secondary" className="text-[10px] px-1 py-0">
+                  {filters.chartType === "pie" ? "Pasta" : filters.chartType === "bar" ? "Çubuk" : "Çizgi"}
+                </Badge>
               </Label>
               <div className="grid grid-cols-3 gap-1">
                 <Button
                   variant={filters.chartType === "pie" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setFilters({ chartType: "pie" })}
-                  className="flex flex-col items-center h-auto py-1 px-0.5"
+                  className={`flex flex-col items-center h-auto py-1.5 px-0.5 transition-all duration-200 ${
+                    filters.chartType === "pie" 
+                      ? "bg-blue-600 text-white shadow-md scale-105" 
+                      : "hover:bg-blue-50 hover:border-blue-300"
+                  }`}
                 >
                   <PieChart className="w-3 h-3" />
-                  <span className="text-[10px]">Pasta</span>
+                  <span className="text-[10px] font-medium">Pasta</span>
                 </Button>
                 <Button
                   variant={filters.chartType === "bar" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setFilters({ chartType: "bar" })}
-                  className="flex flex-col items-center h-auto py-1 px-0.5"
+                  className={`flex flex-col items-center h-auto py-1.5 px-0.5 transition-all duration-200 ${
+                    filters.chartType === "bar" 
+                      ? "bg-blue-600 text-white shadow-md scale-105" 
+                      : "hover:bg-blue-50 hover:border-blue-300"
+                  }`}
                 >
                   <BarChart3 className="w-3 h-3" />
-                  <span className="text-[10px]">Çubuk</span>
+                  <span className="text-[10px] font-medium">Çubuk</span>
                 </Button>
                 <Button
                   variant={filters.chartType === "line" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setFilters({ chartType: "line" })}
-                  className="flex flex-col items-center h-auto py-1 px-0.5"
+                  className={`flex flex-col items-center h-auto py-1.5 px-0.5 transition-all duration-200 ${
+                    filters.chartType === "line" 
+                      ? "bg-blue-600 text-white shadow-md scale-105" 
+                      : "hover:bg-blue-50 hover:border-blue-300"
+                  }`}
                 >
                   <LineChart className="w-3 h-3" />
-                  <span className="text-[10px]">Çizgi</span>
+                  <span className="text-[10px] font-medium">Çizgi</span>
                 </Button>
               </div>
             </div>
 
             <Separator className="my-1 h-px bg-gray-100" />
-
-            {/* Advanced Options */}
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5 text-xs font-medium">
-                <Activity className="h-3 w-3 text-blue-600" />
-                Gelişmiş Seçenekler
-              </Label>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Zap className="h-3 w-3 text-yellow-500" />
-                    <span className="text-xs">Gerçek Zamanlı</span>
-                  </div>
-                  <Button
-                    variant={filters.isRealTime ? "default" : "outline"}
-                    size="sm"
-                    onClick={() =>
-                      setFilters({ isRealTime: !filters.isRealTime })
-                    }
-                    className="text-[10px] h-5 py-0"
-                  >
-                    {filters.isRealTime ? "Açık" : "Kapalı"}
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Brain className="h-3 w-3 text-purple-500" />
-                    <span className="text-xs">AI Destekli</span>
-                  </div>
-                  <Button
-                    variant={filters.isAiPowered ? "default" : "outline"}
-                    size="sm"
-                    onClick={() =>
-                      setFilters({ isAiPowered: !filters.isAiPowered })
-                    }
-                    className="text-[10px] h-5 py-0"
-                  >
-                    {filters.isAiPowered ? "Açık" : "Kapalı"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <Separator className="my-1 h-px bg-gray-100" />
-
-            {/* System Actions */}
+{/* System Actions */}
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5 text-xs font-medium">
                 <Trash2 className="h-3 w-3 text-red-600" />
@@ -760,51 +842,14 @@ function FilterSidebar() {
                 Önbelleği Temizle
               </Button>
             </div>
-          </div>
-        ) : (
-          // Collapsed sidebar with icons only
-          <div className="flex flex-col items-center p-1 space-y-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="rounded-full w-8 h-8 flex items-center justify-center"
-              onClick={() => handleFilterChange("chartType", "pie")}
-            >
-              <PieChart className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="rounded-full w-8 h-8 flex items-center justify-center"
-              onClick={() => handleFilterChange("chartType", "bar")}
-            >
-              <BarChart3 className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="rounded-full w-8 h-8 flex items-center justify-center"
-              onClick={() => handleFilterChange("chartType", "line")}
-            >
-              <LineChart className="h-3.5 w-3.5" />
-            </Button>
-            <Separator className="w-full my-1 h-px bg-gray-100" />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="rounded-full w-8 h-8 flex items-center justify-center"
-              onClick={resetFilters}
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="rounded-full w-8 h-8 flex items-center justify-center text-red-600"
-              onClick={clearCache}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+
+            {/* Drag Status Indicator */}
+            <div className="flex items-center justify-center pt-2 border-t border-gray-100 mt-2">
+              <div className="flex items-center gap-1 text-xs text-gray-400">
+                <Move className="h-3 w-3" />
+                <span>Sürükle & Bırak</span>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -22,7 +22,6 @@ import {
   Megaphone,
 } from "lucide-react";
 import { LeadExpense } from "@shared/schema";
-import DateFilter from "@/components/ui/date-filter";
 import ProjectFilter from "@/components/project-filter";
 import { filterLeadsByProject } from "@/lib/project-detector";
 
@@ -228,18 +227,6 @@ export default function MainLeadReport() {
       <ProjectFilter onProjectChange={setProjectFilter} />
 
       {/* Date Filter */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Tarih Filtresi</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DateFilter
-            onFilterChange={setDateFilters}
-            initialFilters={dateFilters}
-          />
-        </CardContent>
-      </Card>
-
       {/* Header */}
       <div className="text-center">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">

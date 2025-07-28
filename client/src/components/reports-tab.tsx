@@ -33,7 +33,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useLeads, useSalesReps } from "@/hooks/use-leads";
 import { createChart } from "@/lib/chart-utils";
 import StandardChart from "@/components/charts/StandardChart";
-import DateFilter from "@/components/ui/date-filter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MeetingAnalyticsTab from "./meeting-analytics-tab";
 import { TargetAudienceAnalyticsTab } from "./target-audience-analytics-tab";
@@ -237,18 +236,12 @@ export default function ReportsTab() {
 
   return (
     <div className="space-y-6">
-      {/* Date Filter and Controls */}
+      {/* Controls */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-1 space-y-4">
-          <DateFilter
-            onFilterChange={handleDateFilterChange}
-            initialFilters={{
-              startDate: filters.startDate,
-              endDate: filters.endDate,
-              month: filters.month,
-              year: filters.year,
-            }}
-          />
+          <div className="text-center py-4">
+            <p className="text-sm text-gray-600">Filtreleme global filtre bileşeninden yapılır</p>
+          </div>
           <Card className="w-full max-w-xs">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">

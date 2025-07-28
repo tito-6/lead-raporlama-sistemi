@@ -139,26 +139,122 @@ export default function DateFilter({ onFilterChange, initialFilters, className }
               <Label htmlFor="start-date" className="text-xs text-gray-600">
                 Başlangıç Tarihi
               </Label>
-              <Input
-                id="start-date"
-                type="date"
-                value={filters.startDate}
-                onChange={(e) => handleFilterChange('startDate', e.target.value)}
-                className="h-9"
-              />
+              <div className="relative">
+                <Input
+                  id="start-date"
+                  type="date"
+                  value={filters.startDate}
+                  onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                  className="h-9 pr-8 cursor-pointer"
+                  style={{
+                    colorScheme: "light",
+                    WebkitAppearance: "none",
+                  }}
+                />
+                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                  <Calendar className="h-4 w-4 text-gray-400" />
+                </div>
+              </div>
             </div>
             <div>
               <Label htmlFor="end-date" className="text-xs text-gray-600">
                 Bitiş Tarihi
               </Label>
-              <Input
-                id="end-date"
-                type="date"
-                value={filters.endDate}
-                onChange={(e) => handleFilterChange('endDate', e.target.value)}
-                className="h-9"
-              />
+              <div className="relative">
+                <Input
+                  id="end-date"
+                  type="date"
+                  value={filters.endDate}
+                  onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                  className="h-9 pr-8 cursor-pointer"
+                  style={{
+                    colorScheme: "light",
+                    WebkitAppearance: "none",
+                  }}
+                />
+                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                  <Calendar className="h-4 w-4 text-gray-400" />
+                </div>
+              </div>
             </div>
+          </div>
+          
+          {/* Quick Date Selection Buttons */}
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const today = new Date();
+                const lastWeek = new Date(today);
+                lastWeek.setDate(today.getDate() - 7);
+                
+                const startDate = lastWeek.toISOString().split('T')[0];
+                const endDate = today.toISOString().split('T')[0];
+                
+                handleFilterChange('startDate', startDate);
+                handleFilterChange('endDate', endDate);
+              }}
+              className="h-8 px-3 text-xs font-medium"
+            >
+              Son 7 Gün
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const today = new Date();
+                const lastMonth = new Date(today);
+                lastMonth.setMonth(today.getMonth() - 1);
+                
+                const startDate = lastMonth.toISOString().split('T')[0];
+                const endDate = today.toISOString().split('T')[0];
+                
+                handleFilterChange('startDate', startDate);
+                handleFilterChange('endDate', endDate);
+              }}
+              className="h-8 px-3 text-xs font-medium"
+            >
+              Son Ay
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const today = new Date();
+                const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                
+                const startDate = startOfMonth.toISOString().split('T')[0];
+                const endDate = today.toISOString().split('T')[0];
+                
+                handleFilterChange('startDate', startDate);
+                handleFilterChange('endDate', endDate);
+              }}
+              className="h-8 px-3 text-xs font-medium"
+            >
+              Bu Ay
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const today = new Date();
+                const startOfYear = new Date(today.getFullYear(), 0, 1);
+                
+                const startDate = startOfYear.toISOString().split('T')[0];
+                const endDate = today.toISOString().split('T')[0];
+                
+                handleFilterChange('startDate', startDate);
+                handleFilterChange('endDate', endDate);
+              }}
+              className="h-8 px-3 text-xs font-medium"
+            >
+              Bu Yıl
+            </Button>
           </div>
         </div>
 
