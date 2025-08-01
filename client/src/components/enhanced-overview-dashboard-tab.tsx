@@ -72,7 +72,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { MasterDataTable } from "@/components/ui/master-data-table";
 import { useSettings } from "@/hooks/use-settings";
 import ThreeDPie from "@/components/charts/ThreeDPie";
-import LeadDataExplorer from "@/components/lead-data-explorer";
+import EnhancedLeadDataTab from "@/components/enhanced-lead-data-tab";
 import { useColors } from "@/hooks/use-colors";
 import { getSourceColor, getPersonnelColor } from "@/lib/color-system";
 import ProjectFilter from "./project-filter";
@@ -585,6 +585,29 @@ export default function EnhancedOverviewDashboardTab() {
       const response = await fetch("/api/sales-reps");
       return response.json();
     },
+  });
+
+  // Fetch birebir görüşme statistics
+  const { data: birebirGorusmeStats } = useQuery<{
+    totalMeetings: number;
+    byPersonnel: Record<string, {
+      totalMeetings: number;
+      uniqueCustomers: number;
+      averageDuration: number;
+      totalDuration: number;
+    }>;
+    byResult: Record<string, number>;
+    byMonth: Record<string, number>;
+  }>({
+    queryKey: ["/api/birebir-gorusme/stats"],
+    queryFn: async () => {
+      const response = await fetch("/api/birebir-gorusme/stats");
+      if (!response.ok) {
+        throw new Error('Failed to fetch birebir gorusme stats');
+      }
+      return response.json();
+    },
+    staleTime: 30000, // Cache for 30 seconds
   });
 
   // Fetch expense stats with date filtering and project filter
@@ -1284,16 +1307,12 @@ export default function EnhancedOverviewDashboardTab() {
   // Check if we have secondary data from takipte file
   const hasSecondaryData = takipteData && takipteData.length > 0;
 
-  // Cache clear mutation
+  // Client-side cache clear mutation (does NOT call server API)
   const clearCacheMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/cache/clear", {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        throw new Error("Failed to clear cache");
-      }
-      return response.json();
+      // Only clear client-side query cache, not server data
+      await queryClient.invalidateQueries();
+      return { message: "Client-side cache cleared successfully" };
     },
     onSuccess: () => {
       // Invalidate all queries to refresh data
@@ -1462,7 +1481,6 @@ export default function EnhancedOverviewDashboardTab() {
       statusLower.includes("buluşma") ||
       statusLower.includes("bulusma")
     ) {
-      console.log(`🔍 RANDEVU status detected from: "${status}"`);
       return "RANDEVU";
     }
 
@@ -1617,32 +1635,17 @@ export default function EnhancedOverviewDashboardTab() {
         originalStatus.toLowerCase().includes("toplanti") ||
         normalizedStatus === "RANDEVU"
       ) {
-        console.log(
-          `🎯 RANDEVU found: Original="${originalStatus}", Normalized="${normalizedStatus}", Personnel=${personnel}`
-        );
+        // RANDEVU found - logging removed to prevent console spam
       }
 
-      // Add specific debug for SON GORUSME SONUCU field
+      // Add specific debug for SON GORUSME SONUCU field (limited logging)
       if (
         lead["SON GORUSME SONUCU"] &&
         typeof lead["SON GORUSME SONUCU"] === "string"
       ) {
-        console.log(
-          `📊 Lead "${
-            lead["Müşteri Adı Soyadı"] || "Unknown"
-          }" has SON GORUSME SONUCU = "${lead["SON GORUSME SONUCU"]}"`
-        );
+        // Field exists - continue processing (no excessive logging)
       } else {
-        console.log(
-          `⚠️ Lead "${
-            lead["Müşteri Adı Soyadı"] || "Unknown"
-          }" has NO SON GORUSME SONUCU field`,
-          Object.keys(lead).filter(
-            (k) =>
-              k.toLowerCase().includes("sonucu") ||
-              k.toLowerCase().includes("gorusme")
-          )
-        );
+        // Field missing - continue without excessive logging
       }
 
       // Additional check for SON GORUSME SONUCU column specifically for RANDEVU
@@ -1890,45 +1893,14 @@ export default function EnhancedOverviewDashboardTab() {
           }" because SON GORUSME SONUCU="${lead["SON GORUSME SONUCU"]}"`
         );
 
-        // Log RANDEVU counting details with enhanced information
-        console.log(`✅ RANDEVU counter incremented for ${personnel}`, {
-          customerName:
-            lead.customerName || lead["Müşteri Adı Soyadı"] || "Unknown",
-          originalStatus,
-          normalizedStatus,
-          triggerReason: {
-            sonGorusmeSonucuRandevu: hasSonGorusmeSonucuRandevu, // PRIORITIZED CHECK
-            oneOnOneMeetingYes:
-              lead.oneOnOneMeeting &&
-              lead.oneOnOneMeeting.trim().toLowerCase() === "evet",
-            normalizedStatusRandevu: normalizedStatus === "RANDEVU",
-            hasDirectRandevuStatus,
-            hasBirebirField,
-          },
-          statusFields: {
-            sonGorusmeSonucu:
-              lead["SON GORUSME SONUCU"] ||
-              lead["Son Gorusme Sonucu"] ||
-              lead["son gorusme sonucu"],
-            durum: lead["Durum"] || lead["durum"],
-            status: lead["Status"] || lead["status"],
-          },
-          oneOnOneMeeting: lead.oneOnOneMeeting || "N/A",
-          currentCount: {
-            birebirGorusmeCount: personnelStats[personnel].birebirGorusmeCount,
-            randevuStatus: personnelStats[personnel]["RANDEVU"],
-          },
-        });
+        // Log RANDEVU counting details - reduced logging to prevent console spam
+        // Removed excessive console.log statements
 
         // Increment total RANDEVU counter for summary statistics
         totalRandevuCounter++;
       } else {
-        // Debug log for non-RANDEVU records to verify we're not counting them
-        console.log(
-          `❌ NOT COUNTING AS RANDEVU: "${
-            lead["Müşteri Adı Soyadı"] || "Unknown"
-          }" - SON GORUSME SONUCU="${lead["SON GORUSME SONUCU"] || "empty"}"`
-        );
+        // Note: Not counting this lead as RANDEVU (no excessive logging)
+        // Debug: SON GORUSME SONUCU="${lead["SON GORUSME SONUCU"] || "empty"}"
       }
 
       // CORRECT TAKIPTE COUNT: Only count leads that are marked "takipte" in main file AND have match in takip file
@@ -2924,6 +2896,28 @@ export default function EnhancedOverviewDashboardTab() {
                   </div>
                 )}
 
+                {/* Important Note about Aranmayan Lead */}
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <AlertCircle className="h-4 w-4 text-blue-600" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-blue-900 mb-2">
+                        📞 "Aranmayan Lead" Durumu Hakkında Bilgilendirme
+                      </h4>
+                      <p className="text-sm text-blue-800 leading-relaxed">
+                        <strong>Önemli Not:</strong> "Aranmayan Lead" statusündeki leadlerin çoğunluğu son 12 saat içerisinde 
+                        sisteme entegre olan yeni leadlerdir. Bu leadler satış ekibi tarafından ihmal edilen leadler değil, 
+                        henüz iletişim kurulmaya başlanmamış fresh leadlerdir. Sistemin otomatik lead aktarım sürecinin 
+                        doğal bir parçasıdır ve takip edilmeyi bekleyen aktif potansiyel müşterilerdir.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Lead distribution chart by personnel */}
                 <div className="mt-6 p-4 bg-white rounded-lg border">
                   <div className="flex items-center justify-between mb-2">
@@ -3092,6 +3086,296 @@ export default function EnhancedOverviewDashboardTab() {
             )}
           </CardContent>
         </Card>
+
+        {/* Birebir Görüşme Özeti Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5" />
+              🤝 Birebir Görüşme Özeti
+            </CardTitle>
+            <CardDescription>
+              Her personelin görüşme aktiviteleri: toplam görüşme, Birebir Görüşme tipi konuşmalar, randevu sayısı, unique müşteri ve ortalama süre analizi
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {birebirGorusmeStats && birebirGorusmeStats.totalMeetings > 0 && personnelStatusMatrix && personnelStatusMatrix.length > 0 ? (
+              <div className="space-y-4">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse border border-gray-200 text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b-2 border-gray-300">
+                        <th className="text-left p-2 font-medium border-r sticky left-0 bg-gray-50">
+                          Personel
+                        </th>
+                        <th className="text-center p-2 font-medium border-r bg-blue-50">
+                          Toplam Görüşme
+                        </th>
+                        <th className="text-center p-2 font-medium border-r bg-yellow-50">
+                          Birebir Görüşme
+                        </th>
+                        <th className="text-center p-2 font-medium border-r bg-orange-50">
+                          Randevu Sayısı
+                        </th>
+                        <th className="text-center p-2 font-medium border-r bg-green-50">
+                          Unique Müşteriler
+                        </th>
+                        <th className="text-center p-2 font-medium border-r bg-purple-50">
+                          Ortalama Süre (dk)
+                        </th>
+                        <th className="text-center p-2 font-medium bg-indigo-50">
+                          Görüşme/Müşteri Oranı
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {personnelStatusMatrix
+                        .filter(
+                          (person) =>
+                            person.name !== "Belirtilmemiş" &&
+                            (visiblePersonnel.length === 0 ||
+                              visiblePersonnel.includes(person.name)) &&
+                            (showPersonnel || person.name === "Toplam:")
+                        )
+                        .map((person, index) => {
+                          // Calculate görüşme statistics from birebir-gorusme data
+                          const birebirStats = birebirGorusmeStats?.byPersonnel?.[person.name] || {
+                            totalMeetings: 0,
+                            birebirGorusmeMeetings: 0,
+                            randevuCount: 0,
+                            uniqueCustomers: 0,
+                            averageDuration: 0,
+                            totalDuration: 0
+                          };
+                          
+                          const totalGorusme = birebirStats.totalMeetings;
+                          const birebirGorusme = birebirStats.birebirGorusmeMeetings || 0;
+                          const randevuSayisi = birebirStats.randevuCount || 0;
+                          const uniqueCustomers = birebirStats.uniqueCustomers;
+                          const averageDuration = birebirStats.averageDuration || 0;
+                          const meetingRatio = uniqueCustomers > 0 ? (totalGorusme / uniqueCustomers).toFixed(1) : '0.0';
+
+                          // Get unique color for each personnel with 10% opacity for background
+                          const bgColorStyle =
+                            person.name !== "Atanmamış"
+                              ? {
+                                  backgroundColor: `${getUniqueColorForCategory(
+                                    person.name
+                                  )}20`,
+                                }
+                              : { backgroundColor: "#f3f4f6" };
+
+                          return (
+                            <tr key={person.name} style={bgColorStyle}>
+                              <td
+                                className="p-2 font-medium border-r sticky left-0"
+                                style={bgColorStyle}
+                              >
+                                {person.name}
+                              </td>
+                              <td className="text-center p-2 border-r font-bold bg-blue-50">
+                                {totalGorusme}
+                              </td>
+                              <td className="text-center p-2 border-r font-bold bg-yellow-50">
+                                <div className="flex items-center justify-center gap-1">
+                                  <span className="text-yellow-700">{birebirGorusme}</span>
+                                  <span className="text-xs text-yellow-600">🤝</span>
+                                </div>
+                              </td>
+                              <td className="text-center p-2 border-r font-bold bg-orange-50">
+                                <div className="flex items-center justify-center gap-1">
+                                  <span className="text-orange-700">{randevuSayisi}</span>
+                                  <span className="text-xs text-orange-600">�</span>
+                                </div>
+                              </td>
+                              <td className="text-center p-2 border-r bg-green-50">
+                                {uniqueCustomers}
+                              </td>
+                              <td className="text-center p-2 border-r bg-purple-50">
+                                {averageDuration.toFixed(1)}
+                              </td>
+                              <td className="text-center p-2 bg-indigo-50">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span className="font-medium">{meetingRatio}</span>
+                                  <div
+                                    className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden"
+                                  >
+                                    <div
+                                      className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-300"
+                                      style={{ width: `${Math.min(100, (parseFloat(meetingRatio) / 3) * 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      <tr className="border-t-2 border-gray-300 bg-gray-100 font-bold">
+                        <td className="p-2 border-r">Toplam:</td>
+                        <td className="text-center p-2 border-r bg-blue-100">
+                          {personnelStatusMatrix
+                            .filter(
+                              (person) =>
+                                person.name !== "Belirtilmemiş" &&
+                                (visiblePersonnel.length === 0 ||
+                                  visiblePersonnel.includes(person.name))
+                            )
+                            .reduce((sum, person) => {
+                              const birebirStats = birebirGorusmeStats?.byPersonnel?.[person.name] || { totalMeetings: 0 };
+                              return sum + birebirStats.totalMeetings;
+                            }, 0)}
+                        </td>
+                        <td className="text-center p-2 border-r bg-yellow-100">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="text-yellow-700">
+                              {personnelStatusMatrix
+                                .filter(
+                                  (person) =>
+                                    person.name !== "Belirtilmemiş" &&
+                                    (visiblePersonnel.length === 0 ||
+                                      visiblePersonnel.includes(person.name))
+                                )
+                                .reduce((sum, person) => {
+                                  const birebirStats = birebirGorusmeStats?.byPersonnel?.[person.name] || { birebirGorusmeMeetings: 0 };
+                                  return sum + (birebirStats.birebirGorusmeMeetings || 0);
+                                }, 0)}
+                            </span>
+                            <span className="text-xs text-yellow-600">🤝</span>
+                          </div>
+                        </td>
+                        <td className="text-center p-2 border-r bg-orange-100">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="text-orange-700">
+                              {personnelStatusMatrix
+                                .filter(
+                                  (person) =>
+                                    person.name !== "Belirtilmemiş" &&
+                                    (visiblePersonnel.length === 0 ||
+                                      visiblePersonnel.includes(person.name))
+                                )
+                                .reduce((sum, person) => {
+                                  const birebirStats = birebirGorusmeStats?.byPersonnel?.[person.name] || { randevuCount: 0 };
+                                  return sum + (birebirStats.randevuCount || 0);
+                                }, 0)}
+                            </span>
+                            <span className="text-xs text-orange-600">�</span>
+                          </div>
+                        </td>
+                        <td className="text-center p-2 border-r bg-green-100">
+                          {personnelStatusMatrix
+                            .filter(
+                              (person) =>
+                                person.name !== "Belirtilmemiş" &&
+                                (visiblePersonnel.length === 0 ||
+                                  visiblePersonnel.includes(person.name))
+                            )
+                            .reduce((sum, person) => {
+                              const birebirStats = birebirGorusmeStats?.byPersonnel?.[person.name] || { uniqueCustomers: 0 };
+                              return sum + birebirStats.uniqueCustomers;
+                            }, 0)}
+                        </td>
+                        <td className="text-center p-2 border-r bg-purple-100">
+                          {(() => {
+                            const totalDuration = personnelStatusMatrix
+                              .filter(
+                                (person) =>
+                                  person.name !== "Belirtilmemiş" &&
+                                  (visiblePersonnel.length === 0 ||
+                                    visiblePersonnel.includes(person.name))
+                              )
+                              .reduce((sum, person) => {
+                                const birebirStats = birebirGorusmeStats?.byPersonnel?.[person.name] || { totalDuration: 0 };
+                                return sum + (birebirStats.totalDuration || 0);
+                              }, 0);
+                            const totalMeetings = personnelStatusMatrix
+                              .filter(
+                                (person) =>
+                                  person.name !== "Belirtilmemiş" &&
+                                  (visiblePersonnel.length === 0 ||
+                                    visiblePersonnel.includes(person.name))
+                              )
+                              .reduce((sum, person) => {
+                                const birebirStats = birebirGorusmeStats?.byPersonnel?.[person.name] || { totalMeetings: 0 };
+                                return sum + birebirStats.totalMeetings;
+                              }, 0);
+                            return totalMeetings > 0 ? (totalDuration / totalMeetings).toFixed(1) : '0.0';
+                          })()}
+                        </td>
+                        <td className="text-center p-2 bg-indigo-100">
+                          {(() => {
+                            const totalMeetings = personnelStatusMatrix
+                              .filter(
+                                (person) =>
+                                  person.name !== "Belirtilmemiş" &&
+                                  (visiblePersonnel.length === 0 ||
+                                    visiblePersonnel.includes(person.name))
+                              )
+                              .reduce((sum, person) => {
+                                const birebirStats = birebirGorusmeStats?.byPersonnel?.[person.name] || { totalMeetings: 0 };
+                                return sum + birebirStats.totalMeetings;
+                              }, 0);
+                            const totalCustomers = personnelStatusMatrix
+                              .filter(
+                                (person) =>
+                                  person.name !== "Belirtilmemiş" &&
+                                  (visiblePersonnel.length === 0 ||
+                                    visiblePersonnel.includes(person.name))
+                              )
+                              .reduce((sum, person) => {
+                                const birebirStats = birebirGorusmeStats?.byPersonnel?.[person.name] || { uniqueCustomers: 0 };
+                                return sum + birebirStats.uniqueCustomers;
+                              }, 0);
+                            return totalCustomers > 0 ? (totalMeetings / totalCustomers).toFixed(1) : '0.0';
+                          })()}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Important Note about Birebir Görüşme */}
+                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                        <Phone className="h-4 w-4 text-green-600" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-green-900 mb-2">
+                        🤝 Birebir Görüşme Aktivite Analizi
+                      </h4>
+                      <p className="text-sm text-green-800 leading-relaxed">
+                        <strong>Veri Kaynağı:</strong> Bu tablo, "Veri Girişi" sekmesindeki "Birebir Görüşme İçe Aktarma" 
+                        bölümünden yüklenen Excel/CSV dosyalarından oluşturulur. Tabloda her personelin toplam görüşme sayısı, 
+                        <span className="inline-flex items-center gap-1 mx-1 px-2 py-1 bg-yellow-100 rounded text-yellow-700">
+                          <span>🤝</span>
+                          <span className="text-xs">"Müşteri Haberleşme Tipi" = "Birebir Görüşme"</span>
+                        </span>
+                        olan konuşmalar,
+                        <span className="inline-flex items-center gap-1 mx-1 px-2 py-1 bg-orange-100 rounded text-orange-700">
+                          <span>�</span>
+                          <span className="text-xs">"Son Sonuç Adı" içinde "randevu" geçen kayıtlar</span>
+                        </span>
+                        kaç farklı müşteriyle görüştüğü, ortalama görüşme süresi ve müşteri başına görüşme oranı gösterilir. 
+                        Aynı müşterinin birden fazla kaydı varsa, o müşteriyle birden fazla görüşme yapıldığı anlamına gelir.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <Phone className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <p>Henüz birebir görüşme verisi bulunmuyor</p>
+                <p className="text-xs mt-2">
+                  Veri Girişi {">"} Birebir Görüşme İçe Aktarma bölümünden veri yükleyebilirsiniz
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Main Analytics Tabs */}
         <Tabs defaultValue="status" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
@@ -3154,93 +3438,7 @@ export default function EnhancedOverviewDashboardTab() {
               />
             */}
             <div className="grid grid-cols-1 gap-3 mb-4">
-              {/* Quick Performance Metrics */}
-              <Card className="lg:col-span-2">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <TrendingUp className="h-4 w-4" />
-                    Takım Performans Özeti
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="text-center p-2 bg-blue-50 rounded">
-                      <div className="text-base font-bold text-blue-600">
-                        {salesReps.filter((rep: any) => {
-                          const repLeads = leadsData.filter((lead: any) => lead.assignedPersonnel === rep.name);
-                          const salesCount = repLeads.filter((lead: any) => {
-                            const status = lead.status?.toLowerCase() || "";
-                            const wasSaleMade = lead.wasSaleMade?.toLowerCase() || "";
-                            const salesMade = (lead as any)["Müşteriye Satış Yapıldı Mı?"]?.toLowerCase() || "";
-                            return status.includes("satış") || status.includes("satis") || wasSaleMade === "evet" || salesMade === "evet";
-                          }).length;
-                          return salesCount >= (rep.monthlyTarget || 1);
-                        }).length}
-                      </div>
-                      <div className="text-xs text-gray-600">Hedefi Karşılayan</div>
-                    </div>
-                    <div className="text-center p-2 bg-green-50 rounded">
-                      <div className="text-base font-bold text-green-600">
-                        {leadsData.filter((lead: any) => {
-                          const status = lead.status?.toLowerCase() || "";
-                          const wasSaleMade = lead.wasSaleMade?.toLowerCase() || "";
-                          const salesMade = (lead as any)["Müşteriye Satış Yapıldı Mı?"]?.toLowerCase() || "";
-                          return status.includes("satış") || status.includes("satis") || wasSaleMade === "evet" || salesMade === "evet";
-                        }).length}
-                      </div>
-                      <div className="text-xs text-gray-600">Toplam Satış</div>
-                    </div>
-                    <div className="text-center p-2 bg-purple-50 rounded">
-                      <div className="text-base font-bold text-purple-600">
-                        {salesReps.reduce((sum: number, rep: any) => sum + (rep.monthlyTarget || 1), 0)}
-                      </div>
-                      <div className="text-xs text-gray-600">Toplam Hedef</div>
-                    </div>
-                  </div>
-                  
-                  {/* Performance Tips */}
-                  <div className="p-2 bg-blue-50 rounded text-xs">
-                    <div className="font-medium text-blue-800 mb-1">💡 İpuçları:</div>
-                    <div className="text-blue-700 space-y-0.5 text-[10px]">
-                      <div>• Sanayi Merkezi: Aylık 1 satış hedefi</div>
-                      <div>• Kuyum Merkezi: 2 ayda 1 satış hedefi</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
-
-            {/* Full Sales Target Chart - Expandable */}
-            <Card className="mb-4">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Target className="h-4 w-4" />
-                    Detaylı Satış Hedef Analizi
-                  </CardTitle>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDetailedTargets(!showDetailedTargets)}
-                    className="text-xs h-7"
-                  >
-                    {showDetailedTargets ? "Gizle" : "Detayları Göster"}
-                  </Button>
-                </div>
-              </CardHeader>
-              {/* Sales Target Details Section - DISABLED FOR NOW */}
-              {/* 
-              {showDetailedTargets && (
-                <CardContent className="pt-0">
-                  <SalesTargetChart
-                    leads={leadsData}
-                    salesReps={salesReps}
-                    showDetailed={true}
-                  />
-                </CardContent>
-              )}
-              */}
-            </Card>
 
             <div className="grid grid-cols-1 gap-4">
               <Card>
@@ -3526,7 +3724,7 @@ export default function EnhancedOverviewDashboardTab() {
             </div>
           </TabsContent>
 
-          {/* 
+          {/*
         <TabsContent value="advanced" className="space-y-4">
           <div className="space-y-6">
             Advanced Analysis from Main Data Only
@@ -3702,10 +3900,7 @@ export default function EnhancedOverviewDashboardTab() {
         */}
 
           <TabsContent value="data-explorer" className="space-y-4">
-            <LeadDataExplorer
-              leads={deduplicatedLeads || []}
-              isLoading={false}
-            />
+            <EnhancedLeadDataTab />
           </TabsContent>
 
           {/* Potansiyel Takipte tab removed - incorrect statistics, use Takip Kayıtları column instead */}

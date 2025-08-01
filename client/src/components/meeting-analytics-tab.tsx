@@ -1,5 +1,32 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useFilters } from "@/contexts/filter-context";
+
+interface ChartItem {
+  name: string;
+  value: number;
+  percentage: number;
+  color?: string;
+}
+
+interface TimeChartItem {
+  name: string;
+  count: number;
+  percentage: number;
+  color?: string;
+}
+
+interface PersonnelItem {
+  personnel: string;
+  count: number;
+  percentage: number;
+}
+
+interface TimeDistributionItem {
+  range: string;
+  count: number;
+  percentage: number;
+}
 import {
   Card,
   CardContent,
@@ -68,20 +95,6 @@ interface MeetingAnalyticsData {
   }[];
 }
 
-interface ChartItem {
-  name: string;
-  value: number;
-  percentage: number;
-  color: string;
-}
-
-interface TimeChartItem {
-  name: string;
-  count: number;
-  percentage: number;
-  color: string;
-}
-
 export default function MeetingAnalyticsTab({
   filters: parentFilters,
 }: MeetingAnalyticsTabProps) {
@@ -108,9 +121,9 @@ export default function MeetingAnalyticsTab({
   const [filterType, setFilterType] = React.useState<"month" | "dateRange">(
     parentFilters?.month ? "month" : "dateRange"
   );
-  const [chartType, setChartType] = React.useState<"bar" | "pie" | "line">(
-    "bar"
-  );
+  // Use chart type from global filters
+  const { filters } = useFilters();
+  const chartType = filters.chartType;
 
   // Function to generate random colors for charts if needed
   const getRandomColor = () => {
@@ -149,7 +162,7 @@ export default function MeetingAnalyticsTab({
   });
 
   // Add selectedProject to query key and API params
-  const filters = React.useMemo(() => {
+  const queryParams = React.useMemo(() => {
     const params = new URLSearchParams();
     if (filterType === "dateRange" && date.from && date.to) {
       params.append("startDate", format(date.from, "yyyy-MM-dd"));
@@ -180,9 +193,9 @@ export default function MeetingAnalyticsTab({
   ]);
 
   const { data: meetingAnalytics, isLoading } = useQuery({
-    queryKey: ["/api/meeting-analytics", filters.toString(), selectedProject],
+    queryKey: ["/api/meeting-analytics", queryParams.toString(), selectedProject],
     queryFn: async () => {
-      const response = await fetch(`/api/meeting-analytics?${filters}`);
+      const response = await fetch(`/api/meeting-analytics?${queryParams}`);
       if (!response.ok) {
         throw new Error("Failed to fetch meeting analytics");
       }
@@ -194,7 +207,7 @@ export default function MeetingAnalyticsTab({
   const meetingsByPersonnelData = React.useMemo(() => {
     if (!meetingAnalytics?.meetingsByPersonnel) return [];
 
-    return meetingAnalytics.meetingsByPersonnel.map((item) => ({
+    return meetingAnalytics.meetingsByPersonnel.map((item: PersonnelItem) => ({
       name: item.personnel,
       value: item.count,
       percentage: item.percentage,
@@ -206,7 +219,7 @@ export default function MeetingAnalyticsTab({
   const meetingTimeData = React.useMemo(() => {
     if (!meetingAnalytics?.meetingTimeDistribution) return [];
 
-    return meetingAnalytics.meetingTimeDistribution.map((item) => ({
+    return meetingAnalytics.meetingTimeDistribution.map((item: TimeDistributionItem) => ({
       name: item.range,
       count: item.count,
       percentage: item.percentage,
@@ -365,13 +378,11 @@ export default function MeetingAnalyticsTab({
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <ProjectFilter value={selectedProject} onChange={setSelectedProject} />
-        {/* Chart type selection */}
+        {/* Chart type selection - Read only since it's controlled by global filters */}
         <div className="flex justify-end space-x-2">
           <Select
             value={chartType}
-            onValueChange={(value: any) =>
-              setChartType(value as "bar" | "pie" | "line")
-            }
+            disabled={true}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Grafik Tipi" />
@@ -513,7 +524,7 @@ export default function MeetingAnalyticsTab({
                       Personel Performans Detayları
                     </h3>
                     <div className="space-y-2">
-                      {meetingsByPersonnelData.map((item, index) => (
+                      {meetingsByPersonnelData.map((item: ChartItem, index: number) => (
                         <div
                           key={`personnel-${index}`}
                           className="flex justify-between items-center"
@@ -565,12 +576,12 @@ export default function MeetingAnalyticsTab({
                         Lead'in gelişinden itibaren ilk 7 gün içinde toplantı
                         yapılması dönüşüm oranını artırır.
                         {meetingTimeData.some(
-                          (item) => item.name === "0-3 days"
+                          (item: TimeChartItem) => item.name === "0-3 days"
                         ) && (
                           <p className="mt-2">
                             İlk 3 gün içindeki toplantılar:{" "}
                             {meetingTimeData.find(
-                              (item) => item.name === "0-3 days"
+                              (item: TimeChartItem) => item.name === "0-3 days"
                             )?.count || 0}{" "}
                             adet
                           </p>
@@ -583,7 +594,7 @@ export default function MeetingAnalyticsTab({
                         Detaylı Zaman Analizi
                       </h4>
                       <div className="space-y-2">
-                        {meetingTimeData.map((item, index) => (
+                        {meetingTimeData.map((item: TimeChartItem, index: number) => (
                           <div
                             key={`timing-${index}`}
                             className="flex justify-between items-center"

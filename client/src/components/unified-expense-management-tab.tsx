@@ -504,6 +504,15 @@ export default function UnifiedExpenseManagementTab() {
                           "USD"
                         )}
                       </TableCell>
+                      <TableCell>
+                        {expense.projectName ? (
+                          <Badge variant="outline" className="text-xs">
+                            {expense.projectName}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
                       <TableCell>{expense.description}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
@@ -528,7 +537,7 @@ export default function UnifiedExpenseManagementTab() {
                   {expenses.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={6}
+                        colSpan={7}
                         className="text-center text-gray-500"
                       >
                         Henüz gider kaydı bulunmuyor
@@ -713,6 +722,7 @@ export default function UnifiedExpenseManagementTab() {
                     <TableHead>Gider Tipi</TableHead>
                     <TableHead>Tutar (TL)</TableHead>
                     <TableHead>Tutar (USD)</TableHead>
+                    <TableHead>Proje</TableHead>
                     <TableHead>Açıklama</TableHead>
                     <TableHead>İşlemler</TableHead>
                   </TableRow>

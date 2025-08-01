@@ -15,7 +15,7 @@ import {
   type LeadSource,
   type InsertLeadSource,
 } from "@shared/schema";
-import { saveExpenses, loadExpenses } from "./file-persistence";
+import { saveExpenses, loadExpenses, saveLeads, loadLeads } from "./file-persistence";
 
 export interface IStorage {
   // Leads
@@ -35,6 +35,19 @@ export interface IStorage {
     status?: string;
     project?: string;
   }): Promise<Lead[]>;
+  
+  // Pagination support for leads
+  getLeadsWithPagination(page: number, limit: number, filters?: {
+    search?: string;
+    status?: string;
+    salesRep?: string;
+    project?: string;
+  }): Promise<{
+    leads: Lead[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }>;
 
   // Sales Reps
   getSalesReps(): Promise<SalesRep[]>;
@@ -90,6 +103,13 @@ export class MemStorage implements IStorage {
   private currentExpenseId: number;
   private currentLeadSourceId: number;
 
+  // Performance caching
+  private leadsCache: Lead[] | null = null;
+  private leadsCacheTimestamp: number = 0;
+  private salesRepsCache: SalesRep[] | null = null;
+  private salesRepsCacheTimestamp: number = 0;
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
   constructor() {
     this.leads = new Map();
     this.salesReps = new Map();
@@ -103,11 +123,20 @@ export class MemStorage implements IStorage {
     this.currentExpenseId = 1;
     this.currentLeadSourceId = 1;
 
+    // Initialize cache variables
+    this.leadsCache = null;
+    this.leadsCacheTimestamp = 0;
+    this.salesRepsCache = null;
+    this.salesRepsCacheTimestamp = 0;
+
     // Initialize with some default sales reps
     this.initializeDefaults();
 
     // Load expenses from file
     this.loadExpensesFromFile();
+
+    // Load leads from file  
+    this.loadLeadsFromFile();
   }
 
   // Load expenses from file
@@ -144,6 +173,43 @@ export class MemStorage implements IStorage {
       saveExpenses(expenses);
     } catch (err) {
       console.error("Failed to save expenses to file:", err);
+    }
+  }
+
+  // Load leads from file
+  private loadLeadsFromFile(): void {
+    try {
+      const leads = loadLeads();
+      let maxId = 0;
+
+      // Add each lead to the Map
+      leads.forEach((lead) => {
+        this.leads.set(lead.id, lead);
+        if (lead.id > maxId) {
+          maxId = lead.id;
+        }
+      });
+
+      // Update the current ID counter
+      if (maxId > 0) {
+        this.currentLeadId = maxId + 1;
+      }
+
+      console.log(
+        `Loaded ${leads.length} leads from file, next ID: ${this.currentLeadId}`
+      );
+    } catch (err) {
+      console.error("Failed to load leads from file:", err);
+    }
+  }
+
+  // Save leads to file
+  private saveLeadsToFile(): void {
+    try {
+      const leads = Array.from(this.leads.values());
+      saveLeads(leads);
+    } catch (err) {
+      console.error("Failed to save leads to file:", err);
     }
   }
 
@@ -269,7 +335,21 @@ export class MemStorage implements IStorage {
 
   // Leads
   async getLeads(): Promise<Lead[]> {
-    return Array.from(this.leads.values());
+    // Check if cache is valid
+    const now = Date.now();
+    if (this.leadsCache && (now - this.leadsCacheTimestamp) < this.CACHE_DURATION) {
+      return this.leadsCache;
+    }
+
+    // Refresh cache
+    this.leadsCache = Array.from(this.leads.values());
+    this.leadsCacheTimestamp = now;
+    return this.leadsCache;
+  }
+
+  // Clear leads cache when data is modified
+  private clearLeadsCache(): void {
+    this.leadsCache = null;
   }
 
   async getLeadById(id: number): Promise<Lead | undefined> {
@@ -316,9 +396,13 @@ export class MemStorage implements IStorage {
       lastMeetingNote: insertLead.lastMeetingNote || null,
       lastMeetingResult: insertLead.lastMeetingResult || null,
       projectName: insertLead.projectName || null,
+      agencyMonthlyFees: insertLead.agencyMonthlyFees || null,
+      adsExpenses: insertLead.adsExpenses || null,
       createdAt: new Date(),
     };
     this.leads.set(id, lead);
+    this.clearLeadsCache(); // Clear cache after creating
+    this.saveLeadsToFile(); // Save to file after creating
     return lead;
   }
 
@@ -331,16 +415,76 @@ export class MemStorage implements IStorage {
 
     const updatedLead: Lead = { ...existingLead, ...updateData };
     this.leads.set(id, updatedLead);
+    this.clearLeadsCache(); // Clear cache after updating
+    this.saveLeadsToFile(); // Save to file after updating
     return updatedLead;
   }
 
   async deleteLead(id: number): Promise<boolean> {
-    return this.leads.delete(id);
+    const deleted = this.leads.delete(id);
+    if (deleted) {
+      this.clearLeadsCache(); // Clear cache after deleting
+      this.saveLeadsToFile(); // Save to file after deleting
+    }
+    return deleted;
+  }
+
+  // Add pagination support for large datasets
+  async getLeadsWithPagination(page: number = 1, limit: number = 50, filters?: {
+    search?: string;
+    status?: string;
+    salesRep?: string;
+    project?: string;
+  }): Promise<{
+    leads: Lead[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    let allLeads = await this.getLeads();
+    
+    // Apply filters
+    if (filters?.search) {
+      const searchLower = filters.search.toLowerCase();
+      allLeads = allLeads.filter(lead => 
+        lead.customerName?.toLowerCase().includes(searchLower) ||
+        lead.contactId?.toLowerCase().includes(searchLower) ||
+        lead.customerId?.toLowerCase().includes(searchLower) ||
+        lead.webFormNote?.toLowerCase().includes(searchLower) ||
+        lead.assignedPersonnel?.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    if (filters?.status && filters.status !== 'all') {
+      allLeads = allLeads.filter(lead => lead.status === filters.status);
+    }
+    
+    if (filters?.salesRep && filters.salesRep !== 'all') {
+      allLeads = allLeads.filter(lead => lead.assignedPersonnel === filters.salesRep);
+    }
+    
+    if (filters?.project && filters.project !== 'all') {
+      allLeads = allLeads.filter(lead => lead.projectName === filters.project);
+    }
+
+    const total = allLeads.length;
+    const totalPages = Math.ceil(total / limit);
+    const offset = (page - 1) * limit;
+    const leads = allLeads.slice(offset, offset + limit);
+
+    return {
+      leads,
+      total,
+      page,
+      totalPages
+    };
   }
 
   async clearAllLeads(): Promise<void> {
     this.leads.clear();
     this.currentLeadId = 1;
+    this.clearLeadsCache(); // Clear cache after clearing
+    this.saveLeadsToFile(); // Save to file after clearing
   }
 
   // Implemented above
@@ -518,6 +662,8 @@ export class MemStorage implements IStorage {
     const expense: LeadExpense = {
       ...insertExpense,
       id,
+      description: insertExpense.description || null,
+      projectName: insertExpense.projectName || null,
       createdAt: now,
       updatedAt: now,
     };

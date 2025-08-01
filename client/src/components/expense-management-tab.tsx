@@ -19,6 +19,7 @@ interface ExpenseFormData {
   expenseType: 'agency_fee' | 'ads_expense';
   amountTL: string;
   description: string;
+  projectName: string;
 }
 
 export default function ExpenseManagementTab() {
@@ -28,7 +29,8 @@ export default function ExpenseManagementTab() {
     month: new Date().toISOString().slice(0, 7), // Current month in YYYY-MM format
     expenseType: 'agency_fee',
     amountTL: '',
-    description: ''
+    description: '',
+    projectName: ''
   });
 
   const { toast } = useToast();
@@ -42,6 +44,18 @@ export default function ExpenseManagementTab() {
       return response.json();
     }
   });
+
+  // Fetch leads to get project names
+  const { data: leads = [] } = useQuery({
+    queryKey: ['/api/leads'],
+    queryFn: async () => {
+      const response = await fetch('/api/leads');
+      return response.json();
+    }
+  });
+
+  // Get unique project names from leads
+  const projects = Array.from(new Set(leads.map((lead: any) => lead.projectName).filter(Boolean))) as string[];
 
   // Fetch exchange rate
   const { data: exchangeRate } = useQuery({
@@ -151,7 +165,8 @@ export default function ExpenseManagementTab() {
       month: new Date().toISOString().slice(0, 7),
       expenseType: 'agency_fee',
       amountTL: '',
-      description: ''
+      description: '',
+      projectName: ''
     });
   };
 
@@ -162,7 +177,8 @@ export default function ExpenseManagementTab() {
       month: formData.month,
       expenseType: formData.expenseType,
       amountTL: formData.amountTL,
-      description: formData.description || null
+      description: formData.description || undefined,
+      projectName: formData.projectName || undefined
     };
 
     if (editingExpense) {
@@ -178,7 +194,8 @@ export default function ExpenseManagementTab() {
       month: expense.month,
       expenseType: expense.expenseType as 'agency_fee' | 'ads_expense',
       amountTL: expense.amountTL,
-      description: expense.description || ''
+      description: expense.description || '',
+      projectName: expense.projectName || ''
     });
     setIsDialogOpen(true);
   };
@@ -251,9 +268,14 @@ export default function ExpenseManagementTab() {
                   <Label htmlFor="expenseType">Gider Tipi</Label>
                   <Select 
                     value={formData.expenseType} 
-                    onValueChange={(value: 'agency_fee' | 'ads_expense') => 
-                      setFormData(prev => ({ ...prev, expenseType: value }))
-                    }
+                    onValueChange={(value: 'agency_fee' | 'ads_expense') => {
+                      setFormData(prev => ({ 
+                        ...prev, 
+                        expenseType: value,
+                        // Clear project name if switching to agency_fee
+                        projectName: value === 'agency_fee' ? '' : prev.projectName
+                      }));
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -264,6 +286,31 @@ export default function ExpenseManagementTab() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Project selection - show only for ads_expense */}
+                {formData.expenseType === 'ads_expense' && (
+                  <div>
+                    <Label htmlFor="projectName">Proje</Label>
+                    <Select 
+                      value={formData.projectName} 
+                      onValueChange={(value: string) => 
+                        setFormData(prev => ({ ...prev, projectName: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Proje seçin..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Genel</SelectItem>
+                        {projects.map((project) => (
+                          <SelectItem key={project} value={project}>
+                            {project}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div>
                   <Label htmlFor="amountTL">Tutar (TL)</Label>
@@ -373,6 +420,7 @@ export default function ExpenseManagementTab() {
                   <TableRow>
                     <TableHead>Ay</TableHead>
                     <TableHead>Gider Tipi</TableHead>
+                    <TableHead>Proje</TableHead>
                     <TableHead className="text-right">Tutar (TL)</TableHead>
                     <TableHead className="text-right">Tutar (USD)</TableHead>
                     <TableHead>Açıklama</TableHead>
@@ -394,6 +442,15 @@ export default function ExpenseManagementTab() {
                             <Badge variant="outline">
                               {expense.expenseType === 'agency_fee' ? '🏢 Ajans Ücreti' : '📢 Reklam'}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {expense.projectName ? (
+                              <Badge variant="secondary" className="text-xs">
+                                {expense.projectName}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">Genel</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             ₺{amountTL.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}

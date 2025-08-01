@@ -4,10 +4,18 @@ import { setupVite, serveStatic, log } from "./vite";
 import { MemStorage } from "./storage";
 import { DbStorage } from "./db-storage";
 import { runMigrations } from "./db";
+import { configureAuth, protectRoutes } from "./auth";
 import dotenv from "dotenv";
 
 // Load environment variables
 dotenv.config();
+
+// Global storage for birebir görüşme data
+declare global {
+  var birebirGorusmeStorage: any[];
+}
+
+global.birebirGorusmeStorage = global.birebirGorusmeStorage || [];
 
 const app = express();
 app.use(express.json());
@@ -77,6 +85,9 @@ async function initDatabase() {
     } storage`
   );
 
+  // Configure authentication BEFORE other routes
+  configureAuth(app);
+
   const server = await registerRoutes(app, storage);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -96,16 +107,19 @@ async function initDatabase() {
     serveStatic(app);
   }
 
-  // Change port to avoid conflicts with Vite
+// Change port to avoid conflicts with Vite
   // this serves both the API and the client.
   // Using port 5001 to avoid conflicts with Vite on port 5000
-  const port = 5001;
+  const port = process.env.PORT || 5001;
   const host = process.platform === "win32" ? "localhost" : "0.0.0.0";
 
-  if (server) {
+  // For Vercel deployment, export the app as default
+  if (process.env.VERCEL) {
+    log("Vercel deployment detected, exporting app for serverless");
+  } else if (server) {
     server.listen(
       {
-        port,
+        port: parseInt(port.toString()),
         host,
         reusePort: process.platform !== "win32",
       },
@@ -115,5 +129,11 @@ async function initDatabase() {
     );
   } else {
     log("Failed to create server, server is undefined");
+  }
+
+  // Export for Vercel
+  if (process.env.VERCEL) {
+    // Default export for Vercel
+    module.exports = app;
   }
 })();

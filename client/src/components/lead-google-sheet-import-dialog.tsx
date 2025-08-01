@@ -42,6 +42,7 @@ export function LeadGoogleSheetImportDialog({
     message?: string;
     errors?: string[];
     imported?: number;
+    updated?: number;
   } | null>(null);
 
   const { toast } = useToast();
@@ -199,7 +200,9 @@ export function LeadGoogleSheetImportDialog({
         title: "İçe Aktarma Başarılı",
         description:
           result.message ||
-          `${result.importedCount} lead kaydı başarıyla içe aktarıldı.`,
+          `${result.importedCount || result.imported || 0} yeni lead kaydı içe aktarıldı${
+            result.updated ? `, ${result.updated} mevcut kayıt güncellendi` : ""
+          }.`,
       });
 
       // Refresh leads data
@@ -346,7 +349,8 @@ export function LeadGoogleSheetImportDialog({
                   <>
                     Toplam {importResult.totalRows} kayıttan{" "}
                     {importResult.importedCount || importResult.imported} tanesi
-                    başarıyla içe aktarıldı.
+                    başarıyla içe aktarıldı
+                    {importResult.updated ? `, ${importResult.updated} mevcut kayıt güncellendi` : ""}.
                     {(importResult.invalidRows || 0) > 0 &&
                       ` ${
                         importResult.invalidRows || 0

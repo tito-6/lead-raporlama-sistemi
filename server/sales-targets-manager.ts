@@ -1,7 +1,31 @@
 import fs from 'fs';
 import path from 'path';
 
-const TARGETS_FILE = path.join(process.cwd(), 'data', 'sales-targets.json');
+// Determine environment and set appropriate data paths
+const isProduction = process.env.NODE_ENV === 'production';
+const isVercel = process.env.VERCEL === '1';
+
+// For Vercel deployment, we'll use /tmp for writes and public for initial reads
+const DATA_DIR = isVercel ? "/tmp/data" : path.join(process.cwd(), "data");
+const PUBLIC_DATA_DIR = path.join(process.cwd(), "client", "public", "data");
+
+const TARGETS_FILE = path.join(DATA_DIR, 'sales-targets.json');
+const PUBLIC_TARGETS_FILE = path.join(PUBLIC_DATA_DIR, 'sales-targets.json');
+
+// Ensure the data directory exists and copy initial data if needed
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  
+  // In Vercel, copy initial data from public to tmp on first run
+  if (isVercel && fs.existsSync(PUBLIC_TARGETS_FILE) && !fs.existsSync(TARGETS_FILE)) {
+    fs.copyFileSync(PUBLIC_TARGETS_FILE, TARGETS_FILE);
+    console.log("✅ Copied initial sales targets data from public to tmp");
+  }
+} catch (err) {
+  console.error("Failed to create data directory or copy initial targets data:", err);
+}
 
 export interface SalesTarget {
   target: number;
@@ -40,8 +64,16 @@ const initDefaultTargets = (): SalesTargetData => ({
 // Load targets from JSON file
 export const loadSalesTargets = (): SalesTargetData => {
   try {
-    if (fs.existsSync(TARGETS_FILE)) {
-      const data = fs.readFileSync(TARGETS_FILE, 'utf8');
+    let filePath = TARGETS_FILE;
+    
+    // In production, try tmp first, then fallback to public
+    if (isVercel && !fs.existsSync(TARGETS_FILE) && fs.existsSync(PUBLIC_TARGETS_FILE)) {
+      filePath = PUBLIC_TARGETS_FILE;
+      console.log("📂 Loading sales targets from public directory (fallback)");
+    }
+    
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
       const parsed = JSON.parse(data) as SalesTargetData;
       
       // Ensure structure is valid
@@ -81,6 +113,9 @@ export const saveSalesTargets = (data: SalesTargetData): void => {
     console.log('✅ Sales targets saved to file');
   } catch (error) {
     console.error('❌ Error saving sales targets:', error);
+    if (isVercel) {
+      console.warn("⚠️ File persistence not available in Vercel production - sales targets will be lost on restart");
+    }
   }
 };
 

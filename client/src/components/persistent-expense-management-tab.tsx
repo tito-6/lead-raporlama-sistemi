@@ -38,6 +38,7 @@ interface ExpenseFormData {
   expenseType: "agency_fee" | "ads_expense";
   amountTL: string;
   description: string;
+}
 
 export default function PersistentExpenseManagementTab() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -77,6 +78,15 @@ export default function PersistentExpenseManagementTab() {
     queryKey: ["/api/leads"],
     queryFn: async () => {
       const response = await fetch(`/api/leads`);
+      return response.json();
+    },
+  });
+
+  // Fetch exchange rate
+  const { data: exchangeRate } = useQuery<{rate: number; lastUpdated: string}>({
+    queryKey: ["/api/usd-exchange-rate"],
+    queryFn: async () => {
+      const response = await fetch("/api/usd-exchange-rate");
       return response.json();
     },
   });
@@ -395,6 +405,7 @@ export default function PersistentExpenseManagementTab() {
               onUpdate={(id, expense) =>
                 updateExpenseMutation.mutate({ id, expense })
               }
+              exchangeRate={exchangeRate}
             />
           )}
         </TabsContent>

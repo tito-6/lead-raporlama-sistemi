@@ -8,14 +8,19 @@ import {
   insertLeadExpenseSchema,
   insertLeadSourceSchema,
   leadExpenses,
+  type Lead,
+  type InsertLead,
 } from "@shared/schema";
 import { usdExchangeService } from "./usd-exchange-service";
 import { handleAIQuery } from "./routes/ai-advanced";
+import { requireAuth } from "./auth";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import path from "path";
 import { generateReportPDF } from "./pdfReport";
+import { generateExcelReport, generateWordReport } from "./exportService";
+import { exportToPDF } from "./utils/simplePdfExporter.js";
 import express from "express";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -433,11 +438,15 @@ export async function registerRoutes(
   // Use provided storage or fall back to default storage
   const storage = customStorage || defaultStorage;
 
-  // Leads endpoints
-  app.get("/api/leads", async (req, res) => {
+  // Enhanced leads endpoint with pagination and search
+  app.get("/api/leads", requireAuth, async (req, res) => {
     try {
-      const { startDate, endDate, salesRep, leadType, status, month, year } =
+      const { startDate, endDate, salesRep, leadType, status, month, year, page, limit, search } =
         req.query;
+
+      // Parse pagination parameters
+      const pageNum = parseInt(page as string) || 1;
+      const limitNum = parseInt(limit as string) || 50;
 
       // Enhanced filtering with automatic month logic
       let finalStartDate = startDate as string;
@@ -456,25 +465,54 @@ export async function registerRoutes(
           .padStart(2, "0")}-${lastDay}`;
       }
 
-      if (finalStartDate || finalEndDate || salesRep || leadType || status) {
-        const filteredLeads = await storage.getLeadsByFilter({
-          startDate: finalStartDate,
-          endDate: finalEndDate,
-          salesRep: salesRep as string,
-          leadType: leadType as string,
+      // Use pagination if page parameter is provided, otherwise use legacy filtering
+      if (page) {
+        const result = await storage.getLeadsWithPagination(pageNum, limitNum, {
+          search: search as string,
           status: status as string,
+          salesRep: salesRep as string,
+          project: req.query.project as string
         });
-        res.json(filteredLeads);
+        res.json(result);
       } else {
-        const leads = await storage.getLeads();
-        res.json(leads);
+        // Legacy behavior for backward compatibility
+        if (finalStartDate || finalEndDate || salesRep || leadType || status) {
+          const filteredLeads = await storage.getLeadsByFilter({
+            startDate: finalStartDate,
+            endDate: finalEndDate,
+            salesRep: salesRep as string,
+            leadType: leadType as string,
+            status: status as string,
+          });
+          res.json(filteredLeads);
+        } else {
+          const leads = await storage.getLeads();
+          res.json(leads);
+        }
       }
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch leads" });
     }
   });
 
-  app.post("/api/leads", async (req, res) => {
+  // Optimized salesperson leads endpoint with caching
+  app.get("/api/salesperson/:name/leads", async (req, res) => {
+    try {
+      const salespersonName = req.params.name;
+      
+      // Get all leads (benefits from storage layer caching)
+      const allLeads = await storage.getLeads();
+      const salespersonLeads = allLeads.filter(lead => 
+        lead.assignedPersonnel === salespersonName
+      );
+      
+      res.json(salespersonLeads);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch salesperson leads" });
+    }
+  });
+
+  app.post("/api/leads", requireAuth, async (req, res) => {
     try {
       let leadData = insertLeadSchema.parse(req.body);
 
@@ -511,18 +549,25 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/leads/:id", async (req, res) => {
+  app.put("/api/leads/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      console.log(`🔥 PUT request received for lead ${id}:`, JSON.stringify(req.body, null, 2));
+      
       const leadData = insertLeadSchema.partial().parse(req.body);
       const lead = await storage.updateLead(id, leadData);
 
       if (!lead) {
+        console.log(`❌ Lead ${id} not found`);
         return res.status(404).json({ message: "Lead not found" });
       }
 
+      // Storage automatically clears caches when data is updated
+      console.log(`✅ Lead ${id} updated successfully, all caches will be refreshed automatically`);
+
       res.json(lead);
     } catch (error) {
+      console.error(`❌ Error updating lead ${req.params.id}:`, error);
       res.status(400).json({ message: "Invalid lead data", error });
     }
   });
@@ -539,6 +584,66 @@ export async function registerRoutes(
       res.json({ message: "Lead deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete lead" });
+    }
+  });
+
+  // Bulk update leads endpoint
+  app.put("/api/leads/bulk-update", requireAuth, async (req, res) => {
+    try {
+      const { leadIds, updates } = req.body;
+
+      if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+        return res.status(400).json({ message: "Lead IDs array is required" });
+      }
+
+      if (!updates || typeof updates !== 'object') {
+        return res.status(400).json({ message: "Updates object is required" });
+      }
+
+      console.log(`🔥 Bulk update request for ${leadIds.length} leads:`, updates);
+
+      const updatedLeads = [];
+      const errors = [];
+
+      for (const leadId of leadIds) {
+        try {
+          const id = parseInt(leadId);
+          if (isNaN(id)) {
+            errors.push({ leadId, error: "Invalid lead ID" });
+            continue;
+          }
+
+          const leadData = insertLeadSchema.partial().parse(updates);
+          const updatedLead = await storage.updateLead(id, leadData);
+
+          if (updatedLead) {
+            updatedLeads.push(updatedLead);
+          } else {
+            errors.push({ leadId, error: "Lead not found" });
+          }
+        } catch (error) {
+          console.error(`Error updating lead ${leadId}:`, error);
+          errors.push({ 
+            leadId, 
+            error: error instanceof Error ? error.message : "Unknown error" 
+          });
+        }
+      }
+
+      console.log(`✅ Bulk update completed: ${updatedLeads.length} updated, ${errors.length} errors`);
+
+      res.json({
+        message: `Successfully updated ${updatedLeads.length} of ${leadIds.length} leads`,
+        updated: updatedLeads.length,
+        errors: errors.length,
+        errorDetails: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      console.error("Bulk update error:", error);
+      res.status(500).json({ 
+        message: "Failed to bulk update leads", 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      });
     }
   });
 
@@ -617,6 +722,7 @@ export async function registerRoutes(
           byName: 0,
           total: 0,
           skipped: 0,
+          updated: 0,
           imported: 0,
         };
 
@@ -645,6 +751,7 @@ export async function registerRoutes(
 
         // Enhanced validation and warnings
         const createdLeads = [];
+        const updatedLeads = [];
         const errors = [];
         const validationWarnings = {
           dateFormatIssues: 0,
@@ -687,16 +794,22 @@ export async function registerRoutes(
               continue;
             }
 
-            // Check for duplicates before creating
-            const isDuplicate = existingLeads.some((existing) => {
+            // Enhanced duplicate detection with update capability
+            let existingLead: Lead | null = null;
+            let duplicateMatchType = "";
+
+            // Find existing lead by multiple criteria
+            for (const existing of existingLeads) {
               // Primary check: Customer ID and Contact ID
               if (
                 mappedData.customerId &&
                 existing.customerId &&
                 mappedData.customerId === existing.customerId
               ) {
+                existingLead = existing;
+                duplicateMatchType = "customerId";
                 duplicateInfo.byCustomerId++;
-                return true;
+                break;
               }
 
               if (
@@ -704,8 +817,10 @@ export async function registerRoutes(
                 existing.contactId &&
                 mappedData.contactId === existing.contactId
               ) {
+                existingLead = existing;
+                duplicateMatchType = "contactId";
                 duplicateInfo.byContactId++;
-                return true;
+                break;
               }
 
               // Secondary check: Customer name (normalized)
@@ -713,19 +828,71 @@ export async function registerRoutes(
                 const nameA = mappedData.customerName.toLowerCase().trim();
                 const nameB = existing.customerName.toLowerCase().trim();
                 if (nameA === nameB && nameA.length > 3) {
+                  existingLead = existing;
+                  duplicateMatchType = "name";
                   duplicateInfo.byName++;
-                  return true;
+                  break;
+                }
+              }
+            }
+
+            if (existingLead) {
+              // Compare fields to see if update is needed
+              const leadData = insertLeadSchema.parse(mappedData);
+              const fieldsToCompare = [
+                'status', 'assignedPersonnel', 'projectName', 'leadType',
+                'requestDate', 'responseDate', 'lastMeetingResult', 'wasCalledBack',
+                'wasSaleMade', 'saleCount', 'responseResult', 'negativeReason',
+                'webFormNote', 'callNote', 'emailNote', 'appointmentDate'
+              ];
+
+              let hasChanges = false;
+              const updates: Partial<InsertLead> = {};
+
+              for (const field of fieldsToCompare) {
+                const newValue = (leadData as any)[field];
+                const existingValue = (existingLead as any)[field];
+                
+                // Check if values are different (considering null/undefined/empty string equivalence)
+                const normalizeValue = (val: any) => {
+                  if (val === null || val === undefined || val === "") return null;
+                  return typeof val === 'string' ? val.trim() : val;
+                };
+
+                const normalizedNew = normalizeValue(newValue);
+                const normalizedExisting = normalizeValue(existingValue);
+
+                if (normalizedNew !== normalizedExisting && normalizedNew !== null) {
+                  hasChanges = true;
+                  (updates as any)[field] = newValue;
                 }
               }
 
-              return false;
-            });
-
-            if (isDuplicate) {
-              duplicateInfo.skipped++;
-              console.log(
-                `⚠️ Duplicate detected and skipped: ${mappedData.customerName} (ID: ${mappedData.customerId})`
-              );
+              if (hasChanges) {
+                // Update the existing lead
+                try {
+                  const updatedLead = await storage.updateLead(existingLead.id!, updates);
+                  if (updatedLead) {
+                    updatedLeads.push(updatedLead);
+                    duplicateInfo.updated++;
+                    console.log(
+                      `✅ Updated existing lead: ${mappedData.customerName} (${duplicateMatchType}) - Fields: ${Object.keys(updates).join(', ')}`
+                    );
+                  }
+                } catch (updateError) {
+                  console.error(`Failed to update lead ${existingLead.id}:`, updateError);
+                  errors.push({ 
+                    row: i + 1, 
+                    error: `Failed to update existing lead: ${updateError instanceof Error ? updateError.message : String(updateError)}` 
+                  });
+                }
+              } else {
+                // No changes needed, just skip
+                duplicateInfo.skipped++;
+                console.log(
+                  `⚠️ Duplicate detected with no changes, skipped: ${mappedData.customerName} (${duplicateMatchType})`
+                );
+              }
               continue;
             }
 
@@ -783,21 +950,24 @@ export async function registerRoutes(
 
         res.json({
           message: `Successfully imported ${createdLeads.length} leads${
+            updatedLeads.length > 0 ? `, updated ${updatedLeads.length} existing leads` : ""
+          }${
             errors.length > 0 ? ` with ${errors.length} errors` : ""
           }${
             duplicateInfo.skipped > 0
-              ? `. Skipped ${duplicateInfo.skipped} duplicates`
+              ? `. Skipped ${duplicateInfo.skipped} duplicates (no changes)`
               : ""
           }`,
           imported: createdLeads.length,
+          updated: updatedLeads.length,
           errors: errors.length,
           errorDetails: errors,
           validationWarnings,
           duplicateInfo: {
             ...duplicateInfo,
             message:
-              duplicateInfo.skipped > 0
-                ? `Found ${duplicateInfo.skipped} duplicate records: ${duplicateInfo.byCustomerId} by Customer ID, ${duplicateInfo.byContactId} by Contact ID, ${duplicateInfo.byName} by Name`
+              duplicateInfo.total > 0
+                ? `Found ${duplicateInfo.total} duplicate records: ${duplicateInfo.byCustomerId} by Customer ID, ${duplicateInfo.byContactId} by Contact ID, ${duplicateInfo.byName} by Name. Updated ${duplicateInfo.updated}, skipped ${duplicateInfo.skipped} (no changes needed)`
                 : "No duplicates found",
           },
         });
@@ -846,6 +1016,23 @@ export async function registerRoutes(
     }
   });
 
+  // Projects endpoint - get unique project names
+  app.get("/api/projects", async (req, res) => {
+    try {
+      const leads = await storage.getLeads();
+      const projectNamesSet = new Set(
+        leads
+          .map(lead => lead.projectName)
+          .filter(name => name && name.trim() !== '')
+      );
+      const projectNames = Array.from(projectNamesSet).sort();
+      
+      res.json(projectNames);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch projects", error });
+    }
+  });
+
   // Settings endpoints
   app.get("/api/settings", async (req, res) => {
     try {
@@ -869,20 +1056,23 @@ export async function registerRoutes(
   // Takipte (Follow-up) data endpoints
   let takipteStorage: any[] = [];
 
-  // Initialize takipteStorage with data from JSON file
+  // Initialize takipteStorage with data from JSON file (only real imported data)
   const initializeTakipteStorage = () => {
     try {
-      const takipteDataPath = path.join(__dirname, "../takipte_response.json");
-      if (fs.existsSync(takipteDataPath)) {
-        const rawData = fs.readFileSync(takipteDataPath, "utf8");
+      // Check for real imported data file first
+      const realDataPath = path.join(__dirname, "../data/takipte-imported.json");
+      if (fs.existsSync(realDataPath)) {
+        const rawData = fs.readFileSync(realDataPath, "utf8");
         takipteStorage = JSON.parse(rawData);
         console.log(
-          `Loaded ${takipteStorage.length} takipte records from file`
+          `Loaded ${takipteStorage.length} real takipte records from imported data`
         );
-      } else {
-        console.log("No takipte data file found, starting with empty storage");
-        takipteStorage = [];
+        return;
       }
+
+      // Don't load demo data - start with empty storage
+      console.log("No real takipte data imported yet, starting with empty storage");
+      takipteStorage = [];
     } catch (error) {
       console.error("Error loading takipte data:", error);
       takipteStorage = [];
@@ -892,15 +1082,22 @@ export async function registerRoutes(
   // Initialize storage on startup
   initializeTakipteStorage();
 
-  // Function to save takipteStorage to JSON file
+  // Function to save takipteStorage to real imported data file
   function saveTakipteStorage() {
     try {
-      const takipteDataPath = path.join(__dirname, "../takipte_response.json");
+      // Ensure data directory exists
+      const dataDir = path.join(__dirname, "../data");
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      
+      // Save to real imported data file
+      const takipteDataPath = path.join(dataDir, "takipte-imported.json");
       fs.writeFileSync(
         takipteDataPath,
         JSON.stringify(takipteStorage, null, 2)
       );
-      console.log(`Saved ${takipteStorage.length} takipte records to file`);
+      console.log(`Saved ${takipteStorage.length} real takipte records to imported data file`);
     } catch (error) {
       console.error("Error saving takipte data:", error);
     }
@@ -3064,8 +3261,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Report data is required" });
       }
 
-      console.log("Calling generateReportPDF...");
-      const pdfBuffer = await generateReportPDF(reportProps);
+      console.log("Calling exportToPDF with simple exporter...");
+      // Use the simple exporter, which should be more reliable
+      const pdfBuffer = await exportToPDF(reportProps);
       console.log("PDF generation completed, buffer size:", pdfBuffer.length);
 
       if (!pdfBuffer || pdfBuffer.length === 0) {
@@ -3073,6 +3271,16 @@ export async function registerRoutes(
         return res
           .status(500)
           .json({ error: "Failed to generate PDF - empty buffer" });
+      }
+      
+      // Validate buffer structure and content
+      const bufferHeader = pdfBuffer.slice(0, 5).toString();
+      if (!bufferHeader.startsWith('%PDF')) {
+        console.error("Generated buffer does not appear to be a valid PDF");
+        console.error("Buffer header:", bufferHeader);
+        return res
+          .status(500)
+          .json({ error: "Generated file is not a valid PDF" });
       }
 
       res.set({
@@ -3097,6 +3305,557 @@ export async function registerRoutes(
 
       res.status(500).json({
         error: "Failed to generate PDF report",
+        message: errorMessage,
+        ...(process.env.NODE_ENV === "development" && { stack: errorStack }),
+      });
+    }
+  });
+
+  // Excel export endpoint
+  router.post("/api/export/excel", async (req, res) => {
+    console.log("Excel export endpoint hit");
+    
+    try {
+      const reportProps = req.body;
+
+      // Validate that we have some data to work with
+      if (!reportProps) {
+        console.error("No report props provided");
+        return res.status(400).json({ error: "Report data is required" });
+      }
+
+      console.log("Generating Excel report...");
+      const excelBuffer = await generateExcelReport(reportProps);
+      console.log("Excel generation completed, buffer size:", excelBuffer.length);
+
+      if (!excelBuffer || excelBuffer.length === 0) {
+        console.error("Generated Excel buffer is empty or null");
+        return res
+          .status(500)
+          .json({ error: "Failed to generate Excel - empty buffer" });
+      }
+
+      // Set appropriate headers for Excel download
+      res.set({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": 'attachment; filename="lead-report.xlsx"',
+        "Content-Length": excelBuffer.length.toString(),
+      });
+
+      res.send(excelBuffer);
+      console.log("Excel response sent successfully");
+    } catch (err) {
+      console.error("Excel export error:", err);
+      
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      const errorStack = err instanceof Error ? err.stack : undefined;
+
+      res.status(500).json({
+        error: "Failed to generate Excel report",
+        message: errorMessage,
+        ...(process.env.NODE_ENV === "development" && { stack: errorStack }),
+      });
+    }
+  });
+
+  // Birebir Görüşme import endpoints
+  app.post("/api/birebir-gorusme/import", requireAuth, async (req, res) => {
+    try {
+      const { records } = req.body;
+
+      if (!records || !Array.isArray(records)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Records array is required" 
+        });
+      }
+
+      console.log(`Processing ${records.length} birebir görüşme records...`);
+
+      // Validate and count records
+      const validRecords = [];
+      const errors = [];
+
+      for (let i = 0; i < records.length; i++) {
+        const record = records[i];
+        
+        try {
+          // Basic validation for required fields - be more flexible
+          const customerName = record["Müşteri Adı Soyadı(5,520)"] || record["Müşteri Adı Soyadı(105)"] || record["Müşteri Adı Soyadı"] || record.customerName || "";
+          const date = record["Tarih"] || record.date || "";
+          const personnel = record["Personel Adı(5,520)"] || record["Personel Adı(105)"] || record["Personel Adı"] || record.personnel || "";
+          
+          console.log(`🔍 Record ${i + 1} validation:`, {
+            customerName: !!customerName,
+            date: !!date,
+            personnel: !!personnel,
+            customerValue: customerName,
+            dateValue: date,
+            personnelValue: personnel
+          });
+          
+          // Only require personnel name for now, as that's what we need for counting
+          if (!personnel || personnel.trim() === "") {
+            console.log(`❌ Record ${i + 1} failed validation: missing personnel`);
+            errors.push({ 
+              row: i + 1, 
+              error: "Missing required field: Personel Adı" 
+            });
+            continue;
+          }
+
+          validRecords.push({
+            customerName,
+            date: date,
+            personnel,
+            office: record["Ofis"] || record.office || "",
+            notes: record["Notlar"] || record.notes || "",
+            communicationType: record["Müşteri Haberleşme Tipi"] || record.communicationType || "",
+            meetingType: record["Görüşme Tipi"] || record.meetingType || "",
+            time: record["Saat"] || record.time || "",
+            // Additional fields from your requirements
+            reminder: record["Hatırlatma Var Mı"] || record.reminder || "",
+            reminderDate: record["Hatırlatma Tarihi"] || record.reminderDate || "",
+            reminderPersonnel: record["Hatırlatma Personeli"] || record.reminderPersonnel || "",
+            reminderFinal: record["Hatırlatma Son Mu ?"] || record.reminderFinal || "",
+            callDuration: record["Konuşma Süresi"] || record.callDuration || "",
+            profession: record["Meslek Adı"] || record.profession || "",
+            agency: record["Acenta Adı"] || record.agency || "",
+            result: record["Son Sonuç Adı"] || record.result || "",
+            score: record["Puan"] || record.score || "",
+            hasAppointment: record["Randevu Var Mı ?"] || record.hasAppointment || "",
+            appointmentDate: record["Randevu Tarihi"] || record.appointmentDate || "",
+            responsibleSalesPerson: record["Sorumlu Satış Personeli"] || record.responsibleSalesPerson || "",
+            appointmentOffice: record["Randevu Ofisi"] || record.appointmentOffice || "",
+            firstVisitByOffice: record["Ofis Bazında İlk Geliş"] || record.firstVisitByOffice || "",
+            communicationActive: record["İletişim Aktif Mi ?"] || record.communicationActive || "",
+            contactCustomerSource: record["İrtibat Müşteri Kaynağı"] || record.contactCustomerSource || "",
+            contactCustomerSourceGroup: record["İrtibat Müşteri Kaynak Grubu"] || record.contactCustomerSourceGroup || "",
+            communicationCustomerSource: record["İletişim Müşteri Kaynağı"] || record.communicationCustomerSource || "",
+            communicationCustomerSourceGroup: record["İletişim Müşteri Kaynak Grubu"] || record.communicationCustomerSourceGroup || "",
+            mobilePhone: record["Cep Tel"] || record.phone || record.mobilePhone || "",
+            workPhone: record["İş Tel"] || record.workPhone || "",
+            homePhone: record["Ev Tel"] || record.homePhone || "",
+            email: record["Email"] || record.email || "",
+            criteria: record["Kriter"] || record.criteria || "",
+            active: record["AktifMi"] || record.active || "",
+            // Store original appointment date if available
+            originalAppointmentDate: record["Randevu Tarihi"] || record.appointmentDate || "",
+            importedAt: new Date().toISOString()
+          });
+        } catch (error) {
+          errors.push({ 
+            row: i + 1, 
+            error: error instanceof Error ? error.message : "Validation error" 
+          });
+        }
+      }
+
+      // Store in memory (in a real implementation, you would store these in a database)
+      global.birebirGorusmeStorage = global.birebirGorusmeStorage || [];
+      global.birebirGorusmeStorage = [...global.birebirGorusmeStorage, ...validRecords];
+
+      console.log(`✅ Imported ${validRecords.length} birebir görüşme records`);
+
+      res.json({
+        success: true,
+        totalRecords: records.length,
+        successfulImports: validRecords.length,
+        errors: errors.map(e => e.error),
+        duplicates: 0, // For now, not handling duplicates
+        newRecords: validRecords.length,
+        message: `Successfully imported ${validRecords.length} birebir görüşme records${
+          errors.length > 0 ? ` with ${errors.length} errors` : ""
+        }`
+      });
+    } catch (error) {
+      console.error("Birebir görüşme import error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to import birebir görüşme data",
+        message: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // File upload route for birebir görüşme data
+  app.post("/api/birebir-gorusme/import-file", upload.single("file"), requireAuth, async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const fileExtension = path.extname(req.file.originalname).toLowerCase();
+      let data: any[] = [];
+
+      if (fileExtension === ".json") {
+        // Handle JSON files
+        const fileContent = req.file.buffer.toString("utf-8");
+        data = JSON.parse(fileContent);
+      } else if (fileExtension === ".csv") {
+        // Handle CSV files using Papa Parse for better parsing
+        const fileContent = req.file.buffer.toString("utf-8");
+        console.log("📄 CSV file content preview:", fileContent.substring(0, 200));
+        
+        const parseResult = Papa.parse(fileContent, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (header: string) => header.trim()
+        });
+        
+        if (parseResult.errors.length > 0) {
+          console.warn("CSV parsing warnings:", parseResult.errors);
+        }
+        
+        console.log("📊 Parsed CSV data:", parseResult.data.length, "records");
+        console.log("📋 First record keys:", Object.keys(parseResult.data[0] || {}));
+        console.log("📋 First record sample:", parseResult.data[0]);
+        
+        data = parseResult.data;
+      } else if (fileExtension === ".xlsx" || fileExtension === ".xls") {
+        // Handle Excel files using xlsx package
+        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0]; // Use first sheet
+        const worksheet = workbook.Sheets[sheetName];
+        data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        // Convert array of arrays to array of objects
+        if (data.length > 0) {
+          const headers = data[0] as string[];
+          data = data.slice(1).map((row: any[]) => {
+            const record: any = {};
+            headers.forEach((header, index) => {
+              record[header] = row[index] || '';
+            });
+            return record;
+          });
+        }
+      } else {
+        return res.status(400).json({ 
+          error: "Unsupported file format. Please use JSON, CSV, or Excel (.xlsx/.xls) files." 
+        });
+      }
+
+      // Process the data using the same logic as the regular import
+      const validRecords = [];
+      const errors = [];
+
+      for (let i = 0; i < data.length; i++) {
+        const record = data[i];
+        
+        console.log(`🔍 Processing record ${i + 1}:`, {
+          keys: Object.keys(record),
+          customerName: record["Müşteri Adı Soyadı(5,520)"],
+          date: record["Tarih"],
+          personnel: record["Personel Adı(5,520)"],
+          communicationType: record["Müşteri Haberleşme Tipi"],
+          result: record["Son Sonuç Adı"]
+        });
+        
+        try {
+          // Basic validation for required fields
+          const customerName = record["Müşteri Adı Soyadı(5,520)"] || record["Müşteri Adı Soyadı(105)"] || record.customerName;
+          const date = record["Tarih"] || record.date;
+          const personnel = record["Personel Adı(5,520)"] || record["Personel Adı(105)"] || record.personnel;
+          
+          console.log(`📝 Validation check for record ${i + 1}:`, {
+            personnel: personnel ? "✅" : "❌"
+          });
+          
+          // Only require personnel name for now, as that's what we need for counting
+          if (!personnel || personnel.trim() === "") {
+            console.log(`❌ Failed validation for record ${i + 1}: missing personnel`);
+            errors.push({ 
+              row: i + 1, 
+              error: "Missing required field: Personel Adı" 
+            });
+            continue;
+          }
+
+          console.log(`✅ Record ${i + 1} passed validation, processing...`);
+
+          validRecords.push({
+            customerName,
+            date: date,
+            personnel,
+            office: record["Ofis"] || record.office || "",
+            notes: record["Notlar"] || record.notes || "",
+            communicationType: record["Müşteri Haberleşme Tipi"] || record.communicationType || "",
+            meetingType: record["Görüşme Tipi"] || record.meetingType || "",
+            time: record["Saat"] || record.time || "",
+            // Additional fields from your requirements
+            reminder: record["Hatırlatma Var Mı"] || record.reminder || "",
+            reminderDate: record["Hatırlatma Tarihi"] || record.reminderDate || "",
+            reminderPersonnel: record["Hatırlatma Personeli"] || record.reminderPersonnel || "",
+            reminderFinal: record["Hatırlatma Son Mu ?"] || record.reminderFinal || "",
+            callDuration: record["Konuşma Süresi"] || record.callDuration || "",
+            profession: record["Meslek Adı"] || record.profession || "",
+            agency: record["Acenta Adı"] || record.agency || "",
+            result: record["Son Sonuç Adı"] || record.result || "",
+            score: record["Puan"] || record.score || "",
+            hasAppointment: record["Randevu Var Mı ?"] || record.hasAppointment || "",
+            appointmentDate: record["Randevu Tarihi"] || record.appointmentDate || "",
+            responsibleSalesPerson: record["Sorumlu Satış Personeli"] || record.responsibleSalesPerson || "",
+            appointmentOffice: record["Randevu Ofisi"] || record.appointmentOffice || "",
+            firstVisitByOffice: record["Ofis Bazında İlk Geliş"] || record.firstVisitByOffice || "",
+            communicationActive: record["İletişim Aktif Mi ?"] || record.communicationActive || "",
+            contactCustomerSource: record["İrtibat Müşteri Kaynağı"] || record.contactCustomerSource || "",
+            contactCustomerSourceGroup: record["İrtibat Müşteri Kaynak Grubu"] || record.contactCustomerSourceGroup || "",
+            communicationCustomerSource: record["İletişim Müşteri Kaynağı"] || record.communicationCustomerSource || "",
+            communicationCustomerSourceGroup: record["İletişim Müşteri Kaynak Grubu"] || record.communicationCustomerSourceGroup || "",
+            mobilePhone: record["Cep Tel"] || record.phone || record.mobilePhone || "",
+            workPhone: record["İş Tel"] || record.workPhone || "",
+            homePhone: record["Ev Tel"] || record.homePhone || "",
+            email: record["Email"] || record.email || "",
+            criteria: record["Kriter"] || record.criteria || "",
+            active: record["AktifMi"] || record.active || "",
+            // Store original appointment date if available
+            originalAppointmentDate: record["Randevu Tarihi"] || record.appointmentDate || "",
+            importedAt: new Date().toISOString()
+          });
+        } catch (error) {
+          errors.push({ 
+            row: i + 1, 
+            error: error instanceof Error ? error.message : "Validation error" 
+          });
+        }
+      }
+
+      console.log(`📊 Processing summary: ${validRecords.length} valid records, ${errors.length} errors`);
+
+      // Store in memory (in a real implementation, you would store these in a database)
+      global.birebirGorusmeStorage = global.birebirGorusmeStorage || [];
+      global.birebirGorusmeStorage = [...global.birebirGorusmeStorage, ...validRecords];
+
+      console.log(`✅ Imported ${validRecords.length} birebir görüşme records from file`);
+
+      res.json({
+        success: true,
+        totalRecords: data.length,
+        successfulImports: validRecords.length,
+        errors: errors.map(e => e.error),
+        duplicates: 0, // For now, not handling duplicates
+        newRecords: validRecords.length,
+        message: `Successfully imported ${validRecords.length} birebir görüşme records from file${
+          errors.length > 0 ? ` with ${errors.length} errors` : ""
+        }`
+      });
+    } catch (error) {
+      console.error("Birebir görüşme file import error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to import birebir görüşme file",
+        message: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Helper function to parse duration from various formats
+  function parseDuration(timeStr: string): number {
+    if (!timeStr || typeof timeStr !== "string") return 0;
+    
+    // Try to extract numbers from the string
+    const matches = timeStr.match(/(\d+)/g);
+    if (!matches) return 0;
+    
+    // If it looks like HH:MM format (e.g., "17:55" for 17 hours 55 minutes)
+    if (timeStr.includes(":")) {
+      const parts = timeStr.split(":");
+      if (parts.length >= 2) {
+        const hours = parseInt(parts[0]) || 0;
+        const minutes = parseInt(parts[1]) || 0;
+        return hours * 60 + minutes; // Convert to total minutes
+      }
+    }
+    
+    // If it's just a number, assume it's minutes
+    const numericValue = parseInt(matches[0]) || 0;
+    
+    // If the number is greater than 24, likely it's minutes already
+    // If less than 24, might be hours, convert to minutes
+    if (numericValue > 24) {
+      return numericValue; // Assume it's already in minutes
+    } else {
+      return numericValue * 60; // Convert hours to minutes
+    }
+  }
+
+  app.get("/api/birebir-gorusme/stats", requireAuth, async (req, res) => {
+    try {
+      // Get birebir görüşme data from storage
+      const birebirData = global.birebirGorusmeStorage || [];
+      
+      if (birebirData.length === 0) {
+        return res.json({
+          totalMeetings: 0,
+          byPersonnel: {},
+          byResult: {},
+          byMonth: {}
+        });
+      }
+
+      // Calculate stats by personnel
+      const byPersonnel = birebirData.reduce((acc, record) => {
+        const personnel = record.personnel || "Belirtilmemiş";
+        if (!acc[personnel]) {
+          acc[personnel] = {
+            totalMeetings: 0,
+            birebirGorusmeMeetings: 0, // New: count only "Birebir Görüşme" type
+            randevuCount: 0, // New: count appointments from Son Sonuç Adı
+            uniqueCustomers: new Set(),
+            totalDuration: 0,
+            averageDuration: 0
+          };
+        }
+        
+        acc[personnel].totalMeetings++;
+        
+        // Count specific "Birebir Görüşme" meetings from Müşteri Haberleşme Tipi
+        const communicationType = record.communicationType || record["Müşteri Haberleşme Tipi"] || "";
+        if (communicationType.toLowerCase().includes("birebir görüşme") || 
+            communicationType.toLowerCase().includes("birebir gorusme")) {
+          acc[personnel].birebirGorusmeMeetings++;
+        }
+        
+        // Count appointments from Son Sonuç Adı
+        const result = record.result || record["Son Sonuç Adı"] || "";
+        if (result.toLowerCase().includes("randevu") || 
+            result.toLowerCase().includes("appointment")) {
+          acc[personnel].randevuCount++;
+        }
+        
+        // Track unique customers
+        const customerKey = record.customerName || record["Müşteri Adı Soyadı(105)"] || record["Müşteri Adı Soyadı(5,520)"] || "Unknown";
+        acc[personnel].uniqueCustomers.add(customerKey);
+        
+        // Parse duration from the record (assuming it's in "Saat" field or similar)
+        const duration = parseDuration(record.time || record["Saat"] || record.duration || record["Konuşma Süresi"] || "0");
+        acc[personnel].totalDuration += duration;
+        
+        return acc;
+      }, {});
+
+      // Convert Sets to numbers and calculate averages
+      Object.keys(byPersonnel).forEach(personnel => {
+        const stats = byPersonnel[personnel];
+        stats.uniqueCustomers = stats.uniqueCustomers.size;
+        stats.averageDuration = stats.totalMeetings > 0 ? stats.totalDuration / stats.totalMeetings : 0;
+      });
+
+      // Calculate stats by result
+      const byResult = birebirData.reduce((acc, record) => {
+        const result = record.result || "Bilinmiyor";
+        acc[result] = (acc[result] || 0) + 1;
+        return acc;
+      }, {});
+
+      // Calculate stats by month
+      const byMonth = birebirData.reduce((acc, record) => {
+        if (record.date) {
+          const date = new Date(record.date);
+          const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+          acc[monthKey] = (acc[monthKey] || 0) + 1;
+        }
+        return acc;
+      }, {});
+
+      const stats = {
+        totalMeetings: birebirData.length,
+        byPersonnel,
+        byResult,
+        byMonth
+      };
+
+      res.json(stats);
+    } catch (error) {
+      console.error("Birebir görüşme stats error:", error);
+      res.status(500).json({
+        error: "Failed to calculate birebir görüşme statistics",
+        message: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  app.get("/api/birebir-gorusme/recent", requireAuth, async (req, res) => {
+    try {
+      const { limit = 10 } = req.query;
+      
+      // Get recent birebir görüşme records
+      const leads = await storage.getLeads();
+      
+      const recentMeetings = leads
+        .filter(lead => 
+          (lead.oneOnOneMeeting?.toLowerCase() === "evet" ||
+           lead.oneOnOneMeeting?.toLowerCase() === "yes") &&
+          lead.meetingDate
+        )
+        .sort((a, b) => {
+          const dateA = new Date(a.meetingDate!);
+          const dateB = new Date(b.meetingDate!);
+          return dateB.getTime() - dateA.getTime();
+        })
+        .slice(0, parseInt(limit as string))
+        .map(lead => ({
+          id: lead.id,
+          customerName: lead.customerName,
+          appointmentDate: lead.meetingDate,
+          assignedPersonnel: lead.assignedPersonnel,
+          projectName: lead.projectName,
+          status: lead.status,
+          meetingResult: lead.responseResult || lead.lastMeetingResult
+        }));
+
+      res.json(recentMeetings);
+    } catch (error) {
+      console.error("Recent birebir görüşme error:", error);
+      res.status(500).json({
+        error: "Failed to fetch recent birebir görüşme records",
+        message: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Word export endpoint
+  router.post("/api/export/word", async (req, res) => {
+    console.log("Word export endpoint hit");
+    
+    try {
+      const reportProps = req.body;
+
+      // Validate that we have some data to work with
+      if (!reportProps) {
+        console.error("No report props provided");
+        return res.status(400).json({ error: "Report data is required" });
+      }
+
+      console.log("Generating Word report...");
+      const wordBuffer = await generateWordReport(reportProps);
+      console.log("Word generation completed, buffer size:", wordBuffer.length);
+
+      if (!wordBuffer || wordBuffer.length === 0) {
+        console.error("Generated Word buffer is empty or null");
+        return res
+          .status(500)
+          .json({ error: "Failed to generate Word document - empty buffer" });
+      }
+
+      // Set appropriate headers for Word download
+      res.set({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": 'attachment; filename="lead-report.docx"',
+        "Content-Length": wordBuffer.length.toString(),
+      });
+
+      res.send(wordBuffer);
+      console.log("Word response sent successfully");
+    } catch (err) {
+      console.error("Word export error:", err);
+      
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      const errorStack = err instanceof Error ? err.stack : undefined;
+
+      res.status(500).json({
+        error: "Failed to generate Word report",
         message: errorMessage,
         ...(process.env.NODE_ENV === "development" && { stack: errorStack }),
       });

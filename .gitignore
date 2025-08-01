@@ -17,6 +17,14 @@ server/public/
 .env.test.local
 .env.production.local
 
+# Data files (development only - production uses public directory)
+data/
+*.json
+!client/public/data/*.json
+!package.json
+!tsconfig.json
+!*.config.json
+
 # IDE and editor files
 .vscode/settings.json
 .vscode/launch.json

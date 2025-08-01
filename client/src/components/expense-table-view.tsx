@@ -25,6 +25,7 @@ interface ExpenseTableProps {
   onEdit: (expense: LeadExpense) => void;
   onDelete: (id: number) => void;
   onUpdate: (id: number, expense: Partial<LeadExpense>) => void;
+  exchangeRate?: { rate: number; lastUpdated: string };
 }
 
 export function ExpenseTableView({
@@ -32,6 +33,7 @@ export function ExpenseTableView({
   onEdit,
   onDelete,
   onUpdate,
+  exchangeRate,
 }: ExpenseTableProps) {
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [editData, setEditData] = useState<Partial<LeadExpense>>({});
@@ -97,8 +99,10 @@ export function ExpenseTableView({
         <TableHeader>
           <TableRow>
             <TableHead>Ay</TableHead>
-            <TableHead>Gider Türü</TableHead>
-            <TableHead>Tutar (₺)</TableHead>
+            <TableHead>Gider Tipi</TableHead>
+            <TableHead>Tutar (TL)</TableHead>
+            <TableHead>Tutar (USD)</TableHead>
+            <TableHead>Proje</TableHead>
             <TableHead>Açıklama</TableHead>
             <TableHead className="w-[100px]">İşlemler</TableHead>
           </TableRow>
@@ -106,7 +110,7 @@ export function ExpenseTableView({
         <TableBody>
           {expenses.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center py-4">
+              <TableCell colSpan={7} className="text-center py-4">
                 Henüz gider kaydı bulunmamaktadır.
               </TableCell>
             </TableRow>
@@ -157,6 +161,22 @@ export function ExpenseTableView({
                         currency: "TRY",
                         minimumFractionDigits: 2,
                       }).format(parseFloat(expense.amountTL.toString()))
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right font-medium text-green-600">
+                    {exchangeRate ? (
+                      `$${(parseFloat(expense.amountTL.toString()) / exchangeRate.rate).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                    ) : (
+                      '-'
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {expense.projectName ? (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {expense.projectName}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
                     )}
                   </TableCell>
                   <TableCell>

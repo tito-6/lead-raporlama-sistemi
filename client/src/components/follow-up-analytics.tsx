@@ -28,6 +28,9 @@ export default function FollowUpAnalytics() {
   const [selectedProject, setSelectedProject] = React.useState<string>(
     (filters && filters.selectedProject) || "all"
   );
+  
+  // Get chart type from global filters
+  const chartType = filters.chartType;
 
   // Define follow-up statuses
   const followUpStatuses = [
@@ -315,8 +318,8 @@ export default function FollowUpAnalytics() {
                   title="Takip Durumu Dağılımı"
                   data={analytics.statusData}
                   height={400}
-                  chartType="pie"
-                  allowTypeChange={true}
+                  chartType={chartType}
+                  allowTypeChange={false}
                   showDataTable={true}
                   tableTitle="Durum Detayları"
                 />
@@ -340,8 +343,8 @@ export default function FollowUpAnalytics() {
                   title="Personel Bazında Takip Dağılımı"
                   data={analytics.personnelData}
                   height={400}
-                  chartType="bar"
-                  allowTypeChange={true}
+                  chartType={chartType}
+                  allowTypeChange={false}
                   showDataTable={true}
                   tableTitle="Personel Detayları"
                 />
@@ -365,8 +368,8 @@ export default function FollowUpAnalytics() {
                   title="Proje Bazında Takip Dağılımı"
                   data={analytics.projectData}
                   height={400}
-                  chartType="bar"
-                  allowTypeChange={true}
+                  chartType={chartType}
+                  allowTypeChange={false}
                   showDataTable={true}
                   tableTitle="Proje Detayları"
                 />
@@ -390,8 +393,8 @@ export default function FollowUpAnalytics() {
                   title="Lead Tipi Dağılımı"
                   data={analytics.typeData}
                   height={400}
-                  chartType="pie"
-                  allowTypeChange={true}
+                  chartType={chartType}
+                  allowTypeChange={false}
                   showDataTable={true}
                   tableTitle="Tip Detayları"
                 />
@@ -415,8 +418,8 @@ export default function FollowUpAnalytics() {
                   title="Kaynak Bazında Takip Dağılımı"
                   data={analytics.sourceData}
                   height={400}
-                  chartType="pie"
-                  allowTypeChange={true}
+                  chartType={chartType}
+                  allowTypeChange={false}
                   showDataTable={true}
                   tableTitle="Kaynak Detayları"
                 />

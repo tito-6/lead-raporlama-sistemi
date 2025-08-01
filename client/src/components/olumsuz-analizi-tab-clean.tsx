@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFilters } from "@/contexts/filter-context";
 import {
   Card,
   CardContent,
@@ -80,7 +81,9 @@ export default function OlumsuzAnaliziTab() {
   const { toast } = useToast();
 
   // Default to bar chart since we've removed the chart type selection
-  const chartType = "bar" as "pie" | "bar" | "line";
+  // Use chart type from global filters
+  const { filters: globalFilters } = useFilters();
+  const chartType = globalFilters.chartType;
   const [viewMode, setViewMode] = useState<"summary" | "detailed">("summary");
   const [showReasonTable, setShowReasonTable] = useState<boolean>(true);
   const [showSummaryTable, setShowSummaryTable] = useState<boolean>(true);
@@ -97,7 +100,7 @@ export default function OlumsuzAnaliziTab() {
   });
 
   // Add project to universalFilters
-  const filters = { ...universalFilters, project: "all" };
+  const combinedFilters = { ...universalFilters, project: "all" };
 
   // Fetch negative analysis data
   const { data: negativeAnalysis, isLoading } = useQuery<NegativeAnalysisData>({

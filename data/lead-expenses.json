@@ -85,5 +85,45 @@
     "id": 9,
     "createdAt": "2025-07-26T18:14:16.995Z",
     "updatedAt": "2025-07-26T18:14:16.995Z"
+  },
+  {
+    "month": "2025-07",
+    "expenseType": "ads_expense",
+    "amountTL": "42200",
+    "description": "Meta Model Sanayi: 42.200TL\n",
+    "projectName": "Model Sanayi Merkezi",
+    "id": 10,
+    "createdAt": "2025-07-29T13:03:00.868Z",
+    "updatedAt": "2025-07-29T13:05:09.714Z"
+  },
+  {
+    "month": "2025-07",
+    "expenseType": "ads_expense",
+    "amountTL": "14950",
+    "description": "Meta Model Kuyum: 14.950TL\n",
+    "projectName": "Model Kuyum Merkezi",
+    "id": 11,
+    "createdAt": "2025-07-29T13:03:25.803Z",
+    "updatedAt": "2025-07-29T13:04:48.651Z"
+  },
+  {
+    "month": "2025-07",
+    "expenseType": "ads_expense",
+    "amountTL": "2530",
+    "description": "Google model kuyum: 2.530TL",
+    "projectName": "Model Kuyum Merkezi",
+    "id": 12,
+    "createdAt": "2025-07-29T13:04:08.081Z",
+    "updatedAt": "2025-07-29T13:04:35.510Z"
+  },
+  {
+    "month": "2025-07",
+    "expenseType": "ads_expense",
+    "amountTL": "10960",
+    "description": "Google model sanayi: 10.690TL",
+    "projectName": "Model Sanayi Merkezi",
+    "id": 13,
+    "createdAt": "2025-07-29T13:06:09.271Z",
+    "updatedAt": "2025-07-29T13:06:09.271Z"
   }
 ]

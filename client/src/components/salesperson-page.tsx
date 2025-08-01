@@ -38,6 +38,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useGlobalDataSync } from "@/hooks/use-global-data-sync";
 import { Lead } from "@shared/schema";
 import { DataTable } from "@/components/ui/data-table";
 import { StandardChart } from "@/components/charts";
@@ -58,6 +59,9 @@ interface SalespersonPageProps {
 export default function SalespersonPage({
   salespersonName,
 }: SalespersonPageProps) {
+  // Initialize global data synchronization for this component
+  useGlobalDataSync();
+  
   const [filters, setFilters] = useState<UniversalFilters>({
     startDate: "",
     endDate: "",
@@ -69,9 +73,21 @@ export default function SalespersonPage({
     status: "",
   });
 
-  // Fetch leads data
-  const { data: allLeads = [] } = useQuery<Lead[]>({
-    queryKey: ["/api/leads"],
+  // Fetch leads data with caching and performance optimization - optimized for salesperson
+  const { data: allLeads = [], isLoading: isLoadingLeads } = useQuery<Lead[]>({
+    queryKey: ["/api/salesperson", salespersonName, "leads"],
+    queryFn: async () => {
+      const response = await fetch(`/api/salesperson/${encodeURIComponent(salespersonName)}/leads`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch salesperson leads');
+      }
+      return response.json();
+    },
+    staleTime: 30 * 1000, // Reduced to 30 seconds for faster updates when data changes
+    gcTime: 2 * 60 * 1000, // Reduced cache time for more responsive updates
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+    refetchOnMount: true, // Always refetch on mount to ensure fresh data
+    // This query will be invalidated when lead data changes globally
   });
 
   // Get unique projects and statuses for filtering
@@ -88,11 +104,9 @@ export default function SalespersonPage({
     return Array.from(new Set(statuses));
   }, [allLeads]);
 
-  // Filter leads for this salesperson
+  // Filter leads for this salesperson (data is already filtered by API)
   const filteredLeads = useMemo(() => {
-    let leads = allLeads.filter(
-      (lead) => lead.assignedPersonnel === salespersonName
-    );
+    let leads = allLeads; // Data is already filtered for this salesperson
 
     // Apply universal filters
     if (filters.startDate) {
@@ -109,40 +123,307 @@ export default function SalespersonPage({
       });
     }
 
-    if (filters.month) {
-      leads = leads.filter((lead) => {
-        const leadDate = new Date(lead.requestDate || lead.createdAt || "");
-        return (
-          (leadDate.getMonth() + 1).toString().padStart(2, "0") ===
-          filters.month
-        );
-      });
-    }
-
-    if (filters.year && filters.year !== "all-years") {
-      leads = leads.filter((lead) => {
-        const leadDate = new Date(lead.requestDate || lead.createdAt || "");
-        return leadDate.getFullYear().toString() === filters.year;
-      });
-    }
-
-    if (filters.leadType && filters.leadType !== "all-types") {
+    if (filters.leadType) {
       leads = leads.filter((lead) => lead.leadType === filters.leadType);
     }
 
-    if (filters.projectName && filters.projectName !== "all-projects") {
+    if (filters.projectName) {
       leads = leads.filter((lead) => lead.projectName === filters.projectName);
     }
 
-    if (filters.status && filters.status !== "all-statuses") {
+    if (filters.status) {
       leads = leads.filter((lead) => lead.status === filters.status);
     }
 
     return leads;
-  }, [allLeads, salespersonName, filters]);
+  }, [allLeads, filters]);
 
   // Calculate statistics
   const stats = useMemo(() => {
+    const total = filteredLeads.length;
+
+    // Debug logging to see actual values - reduced to prevent spam
+    const satisLeads = filteredLeads.filter(
+      (lead) => lead.leadType === "satis"
+    );
+    const kiralamaLeads = filteredLeads.filter(
+      (lead) => lead.leadType === "kiralama"
+    );
+    const olumsuzLeads = filteredLeads.filter((lead) => {
+      const status = lead.status?.toLowerCase() || "";
+      return status.includes("olumsuz") || status.includes("negative");
+    });
+    const takipteLeads = filteredLeads.filter((lead) => {
+      const status = lead.status?.toLowerCase() || "";
+      return (
+        status.includes("takip") ||
+        status.includes("follow") ||
+        status.includes("potansiyel")
+      );
+    });
+    // Use the same logic as the "👥 Personel Atama ve Durum Özeti" table
+    // Count leads where status contains "satış" or "satis"
+    const satisYapilanLeads = filteredLeads.filter((lead) => {
+      const status = lead.status?.toLowerCase() || "";
+      return status.includes("satış") || status.includes("satis");
+    });
+
+    const finalStats = {
+      total,
+      satis: satisLeads.length,
+      kiralama: kiralamaLeads.length,
+      olumsuz: olumsuzLeads.length,
+      takipte: takipteLeads.length,
+      satisYapilan: satisYapilanLeads.length,
+      conversion:
+        total > 0 ? Math.round((satisYapilanLeads.length / total) * 100) : 0,
+    };
+
+    return finalStats;
+  }, [filteredLeads]);
+
+  // Status distribution for pie chart
+  const statusData = useMemo(() => {
+    const statusCounts = filteredLeads.reduce((acc, lead) => {
+      const status = lead.status || "Belirtilmemiş";
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const total = filteredLeads.length;
+
+    return Object.entries(statusCounts)
+      .map(([status, count]) => ({
+        name: status.length > 20 ? status.substring(0, 20) + "..." : status,
+        fullName: status,
+        value: count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+        color: getStatusColor(status),
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredLeads]);
+
+  // Lead type distribution
+  const leadTypeData = useMemo(() => {
+    const total = stats.satis + stats.kiralama;
+    const typeData = [
+      {
+        name: "Satılık",
+        value: stats.satis,
+        percentage: total > 0 ? Math.round((stats.satis / total) * 100) : 0,
+        color: getStandardColor("LEAD_TYPE", "Satılık"),
+      },
+      {
+        name: "Kiralık",
+        value: stats.kiralama,
+        percentage: total > 0 ? Math.round((stats.kiralama / total) * 100) : 0,
+        color: getStandardColor("LEAD_TYPE", "Kiralık"),
+      },
+    ];
+    return typeData.filter((item) => item.value > 0);
+  }, [stats]);
+
+  // Project distribution with sales data
+  const projectData = useMemo(() => {
+    const projectStats = filteredLeads.reduce((acc, lead) => {
+      const project = lead.projectName || "Belirtilmemiş";
+      if (!acc[project]) {
+        acc[project] = {
+          total: 0,
+          sales: 0,
+        };
+      }
+      acc[project].total += 1;
+
+      // Use the same logic as the "👥 Personel Atama ve Durum Özeti" table
+      const status = lead.status?.toLowerCase() || "";
+      if (status.includes("satış") || status.includes("satis")) {
+        acc[project].sales += 1;
+      }
+      return acc;
+    }, {} as Record<string, { total: number; sales: number }>);
+
+    return Object.entries(projectStats)
+      .map(([project, data]) => ({
+        name: project.length > 20 ? project.substring(0, 20) + "..." : project,
+        fullName: project,
+        value: data.total,
+        sales: data.sales,
+        conversionRate:
+          data.total > 0 ? Math.round((data.sales / data.total) * 100) : 0,
+        salesRate:
+          data.total > 0 ? Math.round((data.sales / data.total) * 100) : 0,
+        color: getStandardColor("PROJECT", project),
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredLeads]);
+
+  // Recent leads
+  const recentLeads = useMemo(() => {
+    return filteredLeads
+      .sort(
+        (a, b) =>
+          new Date(b.requestDate || b.createdAt || "").getTime() -
+          new Date(a.requestDate || a.createdAt || "").getTime()
+      )
+      .slice(0, 10);
+  }, [filteredLeads]);
+
+  // Fetch expense data for cost analysis - temporarily disabled
+  const { data: expenseStats } = useQuery({
+    queryKey: ["/api/expense-stats", filters],
+    queryFn: async () => {
+      // Temporarily return null to avoid API errors
+      return null;
+    },
+    enabled: false, // Disable this query temporarily
+  });
+
+  // Fetch exchange rate for USD conversions
+  const { data: exchangeRate } = useQuery({
+    queryKey: ["/api/usd-exchange-rate"],
+    queryFn: async () => {
+      const response = await fetch("/api/usd-exchange-rate");
+      return response.json();
+    },
+  });
+
+  const costMetrics = useMemo(() => {
+    if (!expenseStats || !exchangeRate) {
+      return null;
+    }
+
+    const expenseData = expenseStats as any; // Type assertion since query is disabled
+    const totalExpenseTL = expenseData.totalExpense || 0;
+    const agencyFeesTL = expenseData.agencyFees || 0;
+    const marketingExpenseTL = expenseData.marketingExpense || 0;
+    const totalExpenseUSD = totalExpenseTL / exchangeRate.rate;
+
+    const leadCount = filteredLeads.length;
+    const salesCount = stats.satisYapilan;
+    const totalLeads = 1543; // This should come from the actual total leads count
+    
+    const leadRatio = totalLeads > 0 ? (leadCount / totalLeads) * 100 : 0;
+    const totalCostTL = totalExpenseTL * (leadCount / totalLeads);
+    const totalCostUSD = totalCostTL / exchangeRate.rate;
+
+    const costPerLead = leadCount > 0 ? totalExpenseTL / leadCount : 0;
+    const costPerLeadTL = costPerLead;
+    const costPerLeadUSD = costPerLeadTL / exchangeRate.rate;
+    const costPerSale = salesCount > 0 ? totalExpenseTL / salesCount : 0;
+
+    const agencyFeesShare = agencyFeesTL * (leadCount / totalLeads);
+    const adsExpensesShare = marketingExpenseTL * (leadCount / totalLeads);
+
+    return {
+      totalExpenseTL,
+      totalExpenseUSD,
+      totalCostTL,
+      totalCostUSD,
+      agencyFeesTL,
+      marketingExpenseTL,
+      leadCount,
+      salesCount,
+      costPerLead,
+      costPerLeadTL,
+      costPerLeadUSD,
+      costPerSale,
+      leadRatio,
+      agencyFeesShare,
+      adsExpensesShare,
+      roi:
+        salesCount > 0 && totalExpenseTL > 0
+          ? ((salesCount * 100000 - totalExpenseTL) / totalExpenseTL) * 100
+          : 0,
+      exchangeRate: exchangeRate.rate,
+    };
+  }, [expenseStats, exchangeRate, filteredLeads, stats]);
+
+  const handleFilterChange = (newFilters: UniversalFilters) => {
+    setFilters(newFilters);
+  };
+
+  // Sales status breakdown for detailed analysis
+  const salesStatusData = useMemo(() => {
+    const salesLeads = filteredLeads.filter((lead) => {
+      const status = lead.status?.toLowerCase() || "";
+      return status.includes("satış") || status.includes("satis");
+    });
+
+    const statusCounts = salesLeads.reduce((acc, lead) => {
+      const status = lead.status || "Belirtilmemiş";
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return Object.entries(statusCounts).map(([status, count]) => ({
+      name: status,
+      value: count,
+      percentage:
+        salesLeads.length > 0
+          ? Math.round((count / salesLeads.length) * 100)
+          : 0,
+      color: getStatusColor(status),
+    }));
+  }, [filteredLeads]);
+
+  // Negative reasons analysis
+  const negativeReasonsData = useMemo(() => {
+    const negativeLeads = filteredLeads.filter((lead) => {
+      const status = lead.status?.toLowerCase() || "";
+      return status.includes("olumsuz") || status.includes("negative");
+    });
+
+    const reasonCounts = negativeLeads.reduce((acc, lead) => {
+      // Extract reason from status or use generic
+      const status = lead.status || "";
+      const reason = status.includes("olumsuz")
+        ? status.replace(/olumsuz/gi, "").trim() || "Belirtilmemiş"
+        : "Olumsuz";
+      acc[reason] = (acc[reason] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return Object.entries(reasonCounts).map(([reason, count]) => ({
+      name: reason.length > 30 ? reason.substring(0, 30) + "..." : reason,
+      fullName: reason,
+      value: count,
+      percentage:
+        negativeLeads.length > 0
+          ? Math.round((count / negativeLeads.length) * 100)
+          : 0,
+      color: getStatusColor("olumsuz"),
+    }));
+  }, [filteredLeads]);
+
+  // Early return with loading state if data is still loading
+  if (isLoadingLeads) {
+    return (
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              👤 {salespersonName} - Performans Raporu
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center py-8">
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
+                <div className="text-sm text-gray-600">Lead verileri yükleniyor...</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Calculate additional statistics
+
+  // Calculate detailed statistics
+  const detailedStats = useMemo(() => {
     const total = filteredLeads.length;
 
     // Debug logging to see actual values
@@ -218,208 +499,6 @@ export default function SalespersonPage({
     console.log("📊 FINAL STATS for", salespersonName, ":", finalStats);
 
     return finalStats;
-  }, [filteredLeads]);
-
-  // Status distribution for pie chart
-  const statusData = useMemo(() => {
-    const statusCounts = filteredLeads.reduce((acc, lead) => {
-      const status = lead.status || "Belirtilmemiş";
-      acc[status] = (acc[status] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    const total = filteredLeads.length;
-
-    return Object.entries(statusCounts)
-      .map(([status, count]) => ({
-        name: status,
-        value: count,
-        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-        color: getStatusColor(status),
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredLeads]);
-
-  // Lead type distribution
-  const leadTypeData = useMemo(() => {
-    const total = stats.satis + stats.kiralama;
-    const typeData = [
-      {
-        name: "Satılık",
-        value: stats.satis,
-        percentage: total > 0 ? Math.round((stats.satis / total) * 100) : 0,
-        color: getStandardColor("LEAD_TYPE", "Satılık"),
-      },
-      {
-        name: "Kiralık",
-        value: stats.kiralama,
-        percentage: total > 0 ? Math.round((stats.kiralama / total) * 100) : 0,
-        color: getStandardColor("LEAD_TYPE", "Kiralık"),
-      },
-    ];
-    return typeData.filter((item) => item.value > 0);
-  }, [stats]);
-
-  // Project distribution with sales data
-  const projectData = useMemo(() => {
-    const projectStats = filteredLeads.reduce((acc, lead) => {
-      const project = lead.projectName || "Belirtilmemiş";
-      if (!acc[project]) {
-        acc[project] = {
-          total: 0,
-          sales: 0,
-        };
-      }
-      acc[project].total += 1;
-
-      // Use the same logic as the "👥 Personel Atama ve Durum Özeti" table
-      const status = lead.status?.toLowerCase() || "";
-      if (status.includes("satış") || status.includes("satis")) {
-        acc[project].sales += 1;
-      }
-
-      return acc;
-    }, {} as Record<string, { total: number; sales: number }>);
-
-    return Object.entries(projectStats)
-      .map(([project, stats]) => ({
-        name: project.length > 20 ? project.substring(0, 20) + "..." : project,
-        fullName: project,
-        value: stats.total,
-        sales: stats.sales,
-        salesRate:
-          stats.total > 0 ? Math.round((stats.sales / stats.total) * 100) : 0,
-        color: getStandardColor("PROJECT", project),
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
-  }, [filteredLeads]);
-
-  // Recent leads
-  const recentLeads = useMemo(() => {
-    return filteredLeads
-      .sort(
-        (a, b) =>
-          new Date(b.requestDate || b.createdAt || "").getTime() -
-          new Date(a.requestDate || a.createdAt || "").getTime()
-      )
-      .slice(0, 10);
-  }, [filteredLeads]);
-
-  // Fetch expense data for cost analysis - temporarily disabled
-  const { data: expenseStats } = useQuery({
-    queryKey: ["/api/expense-stats", filters],
-    queryFn: async () => {
-      // Temporarily return null to avoid API errors
-      return null;
-      /* 
-      const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const response = await fetch(`/api/expense-stats?${params.toString()}`);
-      return response.json();
-      */
-    },
-    enabled: false, // Disable this query temporarily
-  });
-
-  // Fetch exchange rate for USD conversions
-  const { data: exchangeRate } = useQuery({
-    queryKey: ["/api/exchange-rate/usd"],
-    queryFn: async () => {
-      const response = await fetch("/api/exchange-rate/usd");
-      return response.json();
-    },
-  });
-
-  // Calculate cost metrics for this salesperson
-  const costMetrics = useMemo(() => {
-    if (!expenseStats || !exchangeRate || expenseStats === null) return null;
-
-    const stats = expenseStats as any; // Type cast for now
-    const totalLeads = stats.leadCount || 0;
-    const salespersonLeads = filteredLeads.length;
-    const totalExpensesTL = stats.expenses?.tl?.totalExpenses || 0;
-
-    // Calculate salesperson's share of total costs based on lead ratio
-    const leadRatio = totalLeads > 0 ? salespersonLeads / totalLeads : 0;
-    const salespersonCostTL = totalExpensesTL * leadRatio;
-    const salespersonCostUSD = salespersonCostTL / exchangeRate.rate;
-
-    // Cost per lead for this salesperson
-    const costPerLeadTL =
-      salespersonLeads > 0 ? salespersonCostTL / salespersonLeads : 0;
-    const costPerLeadUSD =
-      salespersonLeads > 0 ? salespersonCostUSD / salespersonLeads : 0;
-
-    // Agency fees and ads expenses breakdown
-    const agencyFeesShare =
-      (stats.expenses?.tl?.totalAgencyFees || 0) * leadRatio;
-    const adsExpensesShare =
-      (stats.expenses?.tl?.totalAdsExpenses || 0) * leadRatio;
-
-    return {
-      totalCostTL: salespersonCostTL,
-      totalCostUSD: salespersonCostUSD,
-      costPerLeadTL,
-      costPerLeadUSD,
-      agencyFeesShare,
-      adsExpensesShare,
-      leadRatio: leadRatio * 100,
-    };
-  }, [expenseStats, exchangeRate, filteredLeads.length]);
-
-  const handleFilterChange = (newFilters: UniversalFilters) => {
-    setFilters(newFilters);
-  };
-
-  // Sales status distribution for detailed analytics
-  const salesStatusData = useMemo(() => {
-    const salesData = [
-      {
-        name: "Satış Yapılan",
-        value: stats.satisYapilan,
-        color: getStandardColor("STATUS", "Satış Yapılan"),
-      },
-      {
-        name: "Satış Yapılmayan",
-        value: stats.total - stats.satisYapilan,
-        color: getStandardColor("STATUS", "Aktif"),
-      },
-    ];
-    return salesData.filter((item) => item.value > 0);
-  }, [stats]);
-
-  // Negative reasons analysis
-  const negativeReasonsData = useMemo(() => {
-    const negativeLeads = filteredLeads.filter((lead) =>
-      lead.status?.includes("Olumsuz")
-    );
-
-    const reasonCounts = negativeLeads.reduce((acc, lead) => {
-      // Priority: negativeReason -> lastMeetingNote -> responseResult or fallback to "Belirtilmemiş"
-      let reason = "Belirtilmemiş";
-      if (lead.negativeReason && lead.negativeReason.trim() !== "") {
-        reason = lead.negativeReason.trim();
-      } else if (lead.lastMeetingNote && lead.lastMeetingNote.trim() !== "") {
-        reason = lead.lastMeetingNote.trim();
-      } else if (lead.responseResult && lead.responseResult.trim() !== "") {
-        reason = lead.responseResult.trim();
-      }
-      acc[reason] = (acc[reason] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    return Object.entries(reasonCounts)
-      .map(([reason, count]) => ({
-        name: reason.length > 30 ? reason.substring(0, 30) + "..." : reason,
-        fullName: reason,
-        value: count,
-        color: getStandardColor("STATUS", reason),
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
   }, [filteredLeads]);
 
   return (

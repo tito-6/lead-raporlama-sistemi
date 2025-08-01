@@ -33,11 +33,16 @@ import SalespersonPerformanceTab from "@/components/salesperson-performance-tab"
 import UnifiedExpenseManagementTab from "@/components/unified-expense-management-tab";
 import SalespersonPage from "@/components/salesperson-page";
 import FilterSidebar from "@/components/filter-sidebar";
+import { LogoutButton } from "@/components/LogoutButton";
 import { useQuery } from "@tanstack/react-query";
+import { useGlobalDataSync } from "@/hooks/use-global-data-sync";
 import { SalesRep } from "@shared/schema";
 import UnifiedDataInputTab from "@/components/unified-data-input-tab";
 
 export default function Dashboard() {
+  // Initialize global data synchronization
+  useGlobalDataSync();
+  
   const [activeTab, setActiveTab] = useState("overview");
 
   const { data: salesReps = [] } = useQuery<SalesRep[]>({
@@ -86,13 +91,7 @@ export default function Dashboard() {
               >
                 <Moon className="h-5 w-5" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="p-2 text-gray-400 hover:text-gray-600"
-              >
-                <UserCircle className="h-6 w-6" />
-              </Button>
+              <LogoutButton />
             </div>
           </div>
         </div>
@@ -144,7 +143,7 @@ export default function Dashboard() {
               </TabsList>
 
               {/* Row 2: Analysis Functions */}
-              <TabsList className="grid w-full grid-cols-6 h-auto p-1">
+              <TabsList className="grid w-full grid-cols-5 h-auto p-1">
                 <TabsTrigger
                   value="expense-management"
                   className="flex items-center space-x-2 p-3"
@@ -172,13 +171,6 @@ export default function Dashboard() {
                 >
                   <Grid className="h-4 w-4" />
                   <span>Duplicate Analizi</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="export"
-                  className="flex items-center space-x-2 p-3"
-                >
-                  <Download className="h-4 w-4" />
-                  <span>Dışa Aktar</span>
                 </TabsTrigger>
               </TabsList>
             </div>

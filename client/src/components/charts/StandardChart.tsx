@@ -84,8 +84,21 @@ export default function StandardChart({
   const [currentChartType, setCurrentChartType] = React.useState<
     "pie" | "bar" | "line" | "3d-pie"
   >(chartType);
+  
+  // Update chart type when chartType prop changes
+  React.useEffect(() => {
+    setCurrentChartType(chartType);
+  }, [chartType]);
 
-  // Enhanced data with colors
+  // Calculate dynamic height based on chart type to accommodate long labels
+  const chartHeight = (currentChartType === 'bar' || currentChartType === 'line') ? height + 80 : height;
+  
+  // Calculate responsive font size based on label length
+  const getResponsiveFontSize = (text: string) => {
+    if (text.length > 15) return 10;
+    if (text.length > 10) return 11;
+    return 12;
+  };
   const enhancedData = data.map((item, index) => ({
     ...item,
     color: item.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length],
@@ -181,15 +194,20 @@ export default function StandardChart({
         return (
           <BarChart
             data={enhancedData}
-            margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
             <XAxis
               dataKey="name"
               angle={-45}
               textAnchor="end"
-              height={80}
+              height={100}
               interval={0}
+              tick={{ 
+                fontSize: enhancedData.reduce((min, item) => 
+                  Math.min(min, getResponsiveFontSize(item.name)), 12
+                )
+              }}
             />
             <YAxis
               tick={{ fontSize: 12 }}
@@ -236,15 +254,20 @@ export default function StandardChart({
         return (
           <LineChart
             data={enhancedData}
-            margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
             <XAxis
               dataKey="name"
               angle={-45}
               textAnchor="end"
-              height={80}
+              height={100}
               interval={0}
+              tick={{ 
+                fontSize: enhancedData.reduce((min, item) => 
+                  Math.min(min, getResponsiveFontSize(item.name)), 12
+                )
+              }}
             />
             <YAxis
               tick={{ fontSize: 12 }}
@@ -366,8 +389,8 @@ export default function StandardChart({
           {/* Main Chart Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Chart Section */}
-            <div className="flex justify-center">
-              <ResponsiveContainer width="100%" height={height}>
+            <div className="flex justify-center" id={canvasId} data-chart-id={canvasId}>
+              <ResponsiveContainer width="100%" height={chartHeight}>
                 {renderChart() || <div></div>}
               </ResponsiveContainer>
             </div>

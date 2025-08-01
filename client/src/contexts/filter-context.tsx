@@ -25,6 +25,13 @@ export interface FilterState {
   endDate: string;
   dateFilterType: "none" | "month" | "year" | "custom";
   chartType: "pie" | "bar" | "line";
+  // Separate chart types for export tab sections
+  chartTypes: {
+    project: "bar" | "pie" | "line" | "3d-pie";
+    status: "bar" | "pie" | "line" | "3d-pie";
+    personnel: "bar" | "pie" | "line" | "3d-pie";
+    leadType: "bar" | "pie" | "line" | "3d-pie";
+  };
   isRealTime: boolean;
   isAiPowered: boolean;
   availableProjects: string[];
@@ -36,6 +43,7 @@ export interface FilterState {
 export interface FilterContextType {
   filters: FilterState;
   setFilters: (filters: Partial<FilterState>) => void;
+  setChartType: (section: keyof FilterState["chartTypes"], chartType: "bar" | "pie" | "line" | "3d-pie") => void;
   resetFilters: () => void;
   clearCache: () => void;
   filteredLeads: Lead[];
@@ -56,6 +64,12 @@ const initialFilters: FilterState = {
   endDate: "",
   dateFilterType: "none",
   chartType: "pie",
+  chartTypes: {
+    project: "bar",
+    status: "pie",
+    personnel: "bar",
+    leadType: "pie",
+  },
   isRealTime: false,
   isAiPowered: false,
   availableProjects: [],
@@ -223,6 +237,16 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     setFiltersState((prev) => ({ ...prev, ...newFilters }));
   };
 
+  const setChartType = (section: keyof FilterState["chartTypes"], chartType: "bar" | "pie" | "line" | "3d-pie") => {
+    setFiltersState((prev) => ({
+      ...prev,
+      chartTypes: {
+        ...prev.chartTypes,
+        [section]: chartType
+      }
+    }));
+  };
+
   const resetFilters = () => {
     setFiltersState((prev) => ({
       ...initialFilters,
@@ -244,6 +268,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       value={{
         filters,
         setFilters,
+        setChartType,
         resetFilters,
         clearCache,
         filteredLeads,

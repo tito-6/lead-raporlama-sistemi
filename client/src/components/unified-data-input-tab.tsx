@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/form";
 import { useLeads } from "@/hooks/use-leads";
 import { useSalesReps } from "@/hooks/use-leads";
+import BirebirGorusmeImportTab from "@/components/birebir-gorusme-import-tab";
 
 // --- Excel-style entry types and columns ---
 interface MainLeadData {
@@ -436,6 +437,8 @@ export default function UnifiedDataInputTab() {
       setFile(null);
       let description = `${data.imported} lead başarıyla içe aktarıldı.`;
       if (data.errors > 0) description += ` ${data.errors} hata oluştu.`;
+      if (data.duplicateInfo && data.duplicateInfo.updated > 0)
+        description += ` ${data.duplicateInfo.updated} mevcut lead güncellendi.`;
       if (data.duplicateInfo && data.duplicateInfo.skipped > 0)
         description += ` ${data.duplicateInfo.skipped} yinelenen kayıt atlandı.`;
       toast({ title: "İçe Aktarma Başarılı", description });
@@ -539,8 +542,8 @@ export default function UnifiedDataInputTab() {
       <Tabs defaultValue="excel" className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="excel">Excel Tarzı Giriş</TabsTrigger>
-          <TabsTrigger value="manual">Manuel Tekli Giriş</TabsTrigger>
           <TabsTrigger value="import">🧠 Akıllı Dosya İçe Aktarma</TabsTrigger>
+          <TabsTrigger value="birebir-gorusme">📊 Birebir Görüşme İçe Aktarma</TabsTrigger>
         </TabsList>
         <TabsContent value="excel">
           <div className="space-y-4">
@@ -788,45 +791,6 @@ export default function UnifiedDataInputTab() {
             </div>
           </div>
         </TabsContent>
-        <TabsContent value="manual">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Manuel Veri Girişi</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Form {...form}>
-                    <form
-                      onSubmit={form.handleSubmit((data) =>
-                        createLeadMutation.mutate(data)
-                      )}
-                      className="space-y-4"
-                    >
-                      {/* ...form fields as in DataEntryTab... */}
-                      <div className="flex justify-end space-x-3">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleClear}
-                        >
-                          Temizle
-                        </Button>
-                        <Button
-                          type="submit"
-                          disabled={createLeadMutation.isPending}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Lead Ekle
-                        </Button>
-                      </div>
-                    </form>
-                  </Form>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
         <TabsContent value="import">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
@@ -981,6 +945,10 @@ export default function UnifiedDataInputTab() {
               </Card>
             </div>
           </div>
+        </TabsContent>
+        
+        <TabsContent value="birebir-gorusme">
+          <BirebirGorusmeImportTab />
         </TabsContent>
       </Tabs>
     </div>

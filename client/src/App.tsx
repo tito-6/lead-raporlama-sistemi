@@ -6,6 +6,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
 import { FilterProvider } from "@/contexts/filter-context";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { useGlobalDataSync } from "@/hooks/use-global-data-sync";
+import { GlobalDataProvider } from "@/contexts/global-data-context";
 
 function Router() {
   return (
@@ -16,15 +20,31 @@ function Router() {
   );
 }
 
+// Component that initializes global data sync inside QueryClientProvider
+function AppWithGlobalSync() {
+  // Initialize global data synchronization (now inside QueryClientProvider)
+  useGlobalDataSync();
+  
+  return (
+    <GlobalDataProvider>
+      <AuthProvider>
+        <FilterProvider>
+          <TooltipProvider>
+            <Toaster />
+            <ProtectedRoute>
+              <Router />
+            </ProtectedRoute>
+          </TooltipProvider>
+        </FilterProvider>
+      </AuthProvider>
+    </GlobalDataProvider>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <FilterProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </FilterProvider>
+      <AppWithGlobalSync />
     </QueryClientProvider>
   );
 }

@@ -520,6 +520,34 @@ export default function RefactoredTakipAnaliziTab() {
     );
   }
 
+  // Show empty state if no data is available
+  if (!takipteData || takipteData.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-center items-center h-64">
+          <div className="text-center bg-gray-50 p-8 rounded-lg border-2 border-dashed border-gray-300">
+            <div className="text-6xl mb-4">📊</div>
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+              Takip Analizi Verileri Bulunamadı
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Henüz takip analizi için veri içe aktarılmamış.
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              Analiz sonuçlarını görmek için takip verilerinizi Excel veya CSV formatında yükleyin.
+            </p>
+            <Button 
+              onClick={() => window.location.hash = '#veri-girisi'}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              📤 Veri İçe Aktar
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}

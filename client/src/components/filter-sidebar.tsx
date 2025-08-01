@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Draggable from "react-draggable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,8 @@ function FilterSidebar() {
   const [isDragging, setIsDragging] = useState(false);
   const { filters, setFilters, resetFilters, clearCache, filteredLeads } =
     useFilters();
+  // Create a ref for Draggable to use instead of findDOMNode
+  const nodeRef = useRef(null);
 
   // Load saved position from localStorage on component mount
   useEffect(() => {
@@ -150,8 +152,10 @@ function FilterSidebar() {
       bounds="parent"
       enableUserSelectHack={false}
       scale={1}
+      nodeRef={nodeRef}
     >
       <div
+        ref={nodeRef}
         className={`fixed z-50 transition-all duration-300 ease-in-out ${
           collapsed ? "w-16" : "w-64"
         } bg-white border-2 border-gray-200 rounded-lg shadow-lg h-auto max-h-[95vh] overflow-y-auto hover:shadow-xl ${
